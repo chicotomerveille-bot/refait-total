@@ -294,6 +294,7 @@ function prodForm(p) {
     const type=val('prType'),sec=document.getElementById('prEmpSection');
     if(type==='Femme'){
       sec.innerHTML='<label>Employées</label>'+femEmp.map(x=>`<label style="display:flex;align-items:center;gap:6px;font-weight:400;text-transform:none;font-size:13px;margin-bottom:3px;cursor:pointer"><input type="checkbox" class="prFem" value="${esc(x.name)}"${checked.includes(x.name)?' checked':''}>${esc(x.name)}</label>`).join('');
+      sec.querySelectorAll('.prFem').forEach(cb=>cb.addEventListener('change',calcP));
     } else {
       const cur=e&&(p.type==='Homme'||p.type==='Autre')?(p.employes?p.employes[0]:p.employe):'';
       sec.innerHTML=`<div class="m-row"><div><label>Employé</label><select id="prEmp"><option value="">— Choisir —</option>${otherEmp.map(x=>`<option value="${esc(x.name)}"${cur===x.name?' selected':''}>${esc(x.name)}</option>`).join('')}</select></div><div><label>Manuel</label><input id="prEmpM" value="${cur&&!otherEmp.find(x=>x.name===cur)?esc(cur):''}" /></div></div>`;
@@ -311,17 +312,28 @@ function calcP() {
   const u=document.getElementById('prU'); if(u)u.textContent=type==='Femme'?'(sachets)':'(balles)';
   const qi=document.getElementById('prQuota'); const pi=document.getElementById('prPaie'); const el=document.getElementById('prCalc');
   if(!qi||!pi||!el)return;
-  if(!qi.value) qi.value=type==='Femme'?'300':'6';
-  const quota=+qi.value||(type==='Femme'?300:6);
-  if(type==='Femme') {
-    const taux=shift==='Jour'?1800:2000; const paie=quota?Math.round((reel/quota)*taux):0; const pct=quota?Math.round(reel/quota*100):0;
-    pi.value=paie;
-    el.innerHTML=`<div class="r"><span>📋 Taux</span><span class="v">${taux.toLocaleString()} FCFA</span></div>
-    <div class="r"><span>📦 ${reel}/${quota} sachets</span><span>${pct}%</span></div>
-    <div class="prog"><div class="prog-f" style="width:${Math.min(pct,100)}%"></div></div>
-    <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie</span><span class="v">${paie.toLocaleString()} FCFA</span></div>`;
+  const nbFem=type==='Femme'?document.querySelectorAll('.prFem:checked').length:0;
+  if(type==='Femme'){
+    const defQuota=shift==='Jour'?200*(nbFem||1)+200:null;
+    if(!qi.value||qi.value==='N/A'||qi.dataset.lastNb!==String(nbFem)){qi.value=defQuota?String(defQuota):'N/A';qi.dataset.lastNb=String(nbFem);}
+    if(shift==='Nuit'){
+      const paieTot=2000*(nbFem||1);pi.value=paieTot;
+      el.innerHTML=`<div class="r"><span>🌙 Nuit fixe</span><span class="v">2000 F/personne</span></div>
+      <div class="r"><span>👩 Employées</span><span class="v">${nbFem||1}</span></div>
+      <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie totale</span><span class="v">${paieTot.toLocaleString()} FCFA</span></div>`;
+    } else {
+      const quota=+qi.value||200*(nbFem||1)+200;const taux=1800;
+      const paiePar=quota?Math.round((reel/quota)*taux):0;const paieTot=paiePar*(nbFem||1);const pct=quota?Math.round(reel/quota*100):0;
+      pi.value=paieTot;
+      el.innerHTML=`<div class="r"><span>📋 Taux</span><span class="v">1800 FCFA</span></div>
+      <div class="r"><span>📐 Règle de 3</span><span class="v">${quota} sach → ${taux.toLocaleString()} F</span></div>
+      <div class="r"><span>📦 ${reel}/${quota} sachets</span><span>${pct}%</span></div>
+      <div class="prog"><div class="prog-f" style="width:${Math.min(pct,100)}%"></div></div>
+      <div class="r"><span>💰 Paie / personne</span><span class="v">${paiePar.toLocaleString()} FCFA</span></div>
+      <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie totale (${nbFem||1} pers)</span><span class="v">${paieTot.toLocaleString()} FCFA</span></div>`;
+    }
   } else {
-    const taux=shift==='Jour'?389:417; const paie=reel*taux; const pct=quota?Math.round(reel/quota*100):0;
+    if(!qi.value)qi.value='6';const quota=+qi.value||6;const taux=shift==='Jour'?389:417;const paie=reel*taux;const pct=quota?Math.round(reel/quota*100):0;
     pi.value=paie;
     el.innerHTML=`<div class="r"><span>💰 Taux</span><span class="v">${taux.toLocaleString()} F/balle</span></div>
     <div class="r"><span>🎯 ${reel}/${quota} balles</span><span>${pct}%</span></div>
@@ -341,10 +353,14 @@ function saveProd(id) {
     const emp=val('prEmp')||val('prEmpM').trim()||'Employé';
     employes=[emp];
   }
-  const reel=num('prReel'), quota=num('prQuota')||(type==='Femme'?300:6);
+  const reel=num('prReel'), quota=type==='Femme'?num('prQuota')||0:(num('prQuota')||6);
   const notes=val('prNotes').trim();
-  const taux=type==='Femme'?(shift==='Jour'?1800:2000):(shift==='Jour'?389:417);
-  const paie=type==='Femme'?(quota?Math.round((reel/quota)*taux):0):reel*taux;
+  let paie;
+  if(type==='Femme'){
+    const nb=employes.length;
+    if(shift==='Nuit')paie=2000*nb;
+    else{const q=quota||200*(nb||1)+200;paie=Math.round((reel/q)*1800)*nb;}
+  } else paie=reel*(shift==='Jour'?389:417);
   if(reel<=0)return alert('Production invalide');
   if(id){const p=D.productions.find(x=>x.id===id);if(p){const oldBles=Math.floor(p.reel/50);const newBles=Math.floor(reel/50);Object.assign(p,{date,shift,employes,type,reel,quota,paie,notes});if(type==='Femme'&&newBles!==oldBles){const d=newBles-oldBles;if(d>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:d,unite:'pièce',cout:0,desc:'Ajustement production '+reel+' sachets',createdBy:me()});else D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:-d,unite:'pièce',desc:'Ajustement production '+reel+' sachets',createdBy:me()});}}}
   else {
