@@ -201,6 +201,11 @@ function execDel(type,id) {
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
+    D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:item.qte,unite:'pièce',cout:0,desc:'Annulation commande '+item.client,createdBy:me()});
+  }
+  if(type==='productions'&&item.type==='Femme'){
+    const bles=Math.floor(item.reel/50);
+    if(bles>0)D.stockS.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:bles,unite:'pièce',desc:'Annulation production '+item.reel+' sachets',createdBy:me()});
   }
   trashIt(type,item,motif);
   D[type]=D[type].filter(x=>x.id!==id);
@@ -234,8 +239,9 @@ function saveCommande(id) {
   const pt=qte*pu, paye=num('coPaye'), stat=val('coStat');
   if(id) {
     const c=D.commandes.find(x=>x.id===id); if(!c)return;
-    const oldReste=c.reste, oldClient=c.client;
+    const oldReste=c.reste, oldClient=c.client, oldQte=c.qte;
     const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
+    if(qte!==oldQte){const dq=qte-oldQte;if(dq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:dq,unite:'pièce',desc:'Ajustement commande '+client,createdBy:me()});else D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:-dq,unite:'pièce',cout:0,desc:'Ajustement commande '+client,createdBy:me()});}
     // Remove old debt from previous client
     const oldCl=D.clients.find(x=>x.name===oldClient);
     if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
@@ -250,6 +256,7 @@ function saveCommande(id) {
     let cl=D.clients.find(x=>x.name===client);
     if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});cl=D.clients[D.clients.length-1];}
     if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
+    D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte,unite:'pièce',desc:'Commande '+client,createdBy:me()});
   }
   closeM();save();render();
 }
@@ -340,7 +347,10 @@ function saveProd(id) {
   const paie=type==='Femme'?(quota?Math.round((reel/quota)*taux):0):reel*taux;
   if(reel<=0)return alert('Production invalide');
   if(id){const p=D.productions.find(x=>x.id===id);if(p)Object.assign(p,{date,shift,employes,type,reel,quota,paie,notes});}
-  else D.productions.push({id:nextId++,date,shift,employes,type,reel,quota,paie,notes,createdBy:me()});
+  else {
+    D.productions.push({id:nextId++,date,shift,employes,type,reel,quota,paie,notes,createdBy:me()});
+    if(type==='Femme'){const bles=Math.floor(reel/50);if(bles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:bles,unite:'pièce',cout:0,desc:'Production '+reel+' sachets',createdBy:me()});}
+  }
   closeM();save();render();
 }
 
@@ -424,7 +434,7 @@ function saveDep(id) {
 }
 
 // ─── STOCK ───
-const STK=['Farine','Sachets rouleaux','Sachets grand','Sachets petit'];
+const STK=['Farine','Sachets rouleaux','Sachets grand','Sachets petit','Balles 🏀'];
 function stockForm(type,item) {
   const e=!!item; const isIn=type==='E'; const catOpts=STK.map(c=>`<option value="${c}"${e&&item.categorie===c?' selected':''}>${c}</option>`).join('');
   openM(`
@@ -702,7 +712,7 @@ function stockHTML() {
   D.stockS.forEach(s=>{cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées et sorties</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button></div>
-  <div class="grid" style="grid-template-columns:repeat(4,1fr)">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
+  <div class="grid" style="grid-template-columns:repeat(5,1fr)">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
     <div class="big" style="font-size:20px;color:${(cur[c]||0)>=0?'var(--green)':'var(--red)'}">${cur[c]||0}</div>
     <div class="lbl" style="font-size:10px">${c}</div></div>`).join('')}</div>
   <div class="card mb-12"><h2>📥 Entrées</h2><div class="table-wrap">${makeStockTable(D.stockE,'E')}</div></div>
