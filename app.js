@@ -10,6 +10,35 @@ let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
 let theme = localStorage.getItem('chips_theme')||'light';
+let currentUser = null;
+
+function me() { return currentUser?.user_metadata?.full_name||currentUser?.email||''; }
+
+function updateUserUI() {
+  const el=document.getElementById('userInfo'); if(!el)return;
+  if(currentUser){
+    const nm=me(), av=currentUser.user_metadata?.avatar_url||'';
+    el.innerHTML=av?`<img src="${av}" class="uav" alt="" onclick="logout()"> <span onclick="logout()">${esc(nm)}</span>`:`<span class="uav uav-n" onclick="logout()">${esc(nm).charAt(0).toUpperCase()}</span><span onclick="logout()">${esc(nm)}</span>`;
+    el.className='user-info logged';
+  } else {
+    el.innerHTML='<button class="btn btn-sm btn-p" onclick="loginGoogle()"><i class="ti ti-brand-google"></i> Google</button>';
+  }
+}
+async function loginGoogle() {
+  if(!SB)return alert('Supabase non disponible');
+  await SB.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});
+}
+async function logout() { await SB.auth.signOut(); }
+async function initAuth() {
+  if(!SB)return;
+  const {data:{session}}=await SB.auth.getSession();
+  if(session){currentUser=session.user;updateUserUI();}
+  SB.auth.onAuthStateChange((e,session)=>{
+    if(session)currentUser=session.user;else currentUser=null;
+    updateUserUI();render();
+  });
+}
+
 function toggleTheme() {
   theme = theme==='dark'?'light':'dark';
   document.documentElement.setAttribute('data-theme',theme);
@@ -107,7 +136,7 @@ function val(id) { return document.getElementById(id)?.value||''; }
 function num(id) { return +document.getElementById(id)?.value||0; }
 
 // ─── TRASH ───
-function trashIt(type,item,motif) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now(),motif:motif||''}); }
+function trashIt(type,item,motif) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now(),motif:motif||'',createdBy:me()}); }
 function cleanTrash() { const S=7*86400000; const b=D.trash.length; D.trash=D.trash.filter(t=>Date.now()-t.deletedAt<S); if(D.trash.length!==b)save(); }
 function restoreT(id) { const t=D.trash.find(x=>x.id===id); if(!t)return; D[t.type].push(t.content); D.trash=D.trash.filter(x=>x.id!==id); save(); render(); }
 
@@ -131,7 +160,7 @@ function saveClient(id) {
   if(!id&&D.clients.find(c=>c.name===n))return alert('Ce nom existe deja');
   const di=num('cDi');
   if(id) { const c=D.clients.find(x=>x.id===id); if(c){c.name=n;c.phone=val('cPhone');c.addr=val('cAddr');c.detteInit=di;c.detteCur=num('cDc');} }
-  else D.clients.push({id:nextId++,name:n,phone:val('cPhone'),addr:val('cAddr'),detteInit:di,detteCur:di});
+  else D.clients.push({id:nextId++,name:n,phone:val('cPhone'),addr:val('cAddr'),detteInit:di,detteCur:di,createdBy:me()});
   closeM();save();render();
 }
 
@@ -139,7 +168,7 @@ function payerDette(id) {
   const c=D.clients.find(x=>x.id===id); if(!c)return;
   const mt=prompt('Montant recu (FCFA) :',(c.detteCur||0).toString()); if(!mt||+mt<=0)return;
   const reste=+mt; c.detteCur=Math.max(0,(c.detteCur||0)-reste);
-  D.montants.push({id:nextId++,date:today(),desc:'Paiement dette - '+c.name,type:'Dette reçue',client:c.name,montant:reste});
+  D.montants.push({id:nextId++,date:today(),desc:'Paiement dette - '+c.name,type:'Dette reçue',client:c.name,montant:reste,createdBy:me()});
   // Reduce commande restes proportionally (oldest first)
   const cmds=D.commandes.filter(x=>x.client===c.name&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
   let left=reste;
@@ -210,14 +239,14 @@ function saveCommande(id) {
     if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
     // Add new debt to current client
     let curCl=D.clients.find(x=>x.name===client);
-    if(!curCl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0});curCl=D.clients[D.clients.length-1];}
+    if(!curCl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});curCl=D.clients[D.clients.length-1];}
     if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
-    if(diff!==0) D.montants.push({id:nextId++,date,desc:diff>0?'Acompte commande - '+client:'Correction acompte - '+client,type:'Vente',client,montant:diff});
+    if(diff!==0) D.montants.push({id:nextId++,date,desc:diff>0?'Acompte commande - '+client:'Correction acompte - '+client,type:'Vente',client,montant:diff,createdBy:me()});
   } else {
-    D.commandes.push({id:nextId++,client,date,produit:prod,qte,prixTotal:pt,paye,reste:pt-paye,statut:stat});
-    if(paye>0) D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye});
+    D.commandes.push({id:nextId++,client,date,produit:prod,qte,prixTotal:pt,paye,reste:pt-paye,statut:stat,createdBy:me()});
+    if(paye>0) D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
     let cl=D.clients.find(x=>x.name===client);
-    if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0});cl=D.clients[D.clients.length-1];}
+    if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});cl=D.clients[D.clients.length-1];}
     if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
   }
   closeM();save();render();
@@ -228,7 +257,7 @@ function payerCmd(id) {
   const r=c.prixTotal-c.paye; if(r<=0)return alert('Déjà payé');
   const mt=prompt('Montant versé (FCFA) :',r.toString()); if(!mt||+mt<=0)return;
   c.paye+=+mt; c.reste=c.prixTotal-c.paye; if(c.reste<=0)c.statut='Livrée';
-  D.montants.push({id:nextId++,date:today(),desc:'Paiement commande - '+c.client,type:'Vente',client:c.client,montant:+mt});
+  D.montants.push({id:nextId++,date:today(),desc:'Paiement commande - '+c.client,type:'Vente',client:c.client,montant:+mt,createdBy:me()});
   const cl=D.clients.find(x=>x.name===c.client); if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-(+mt));
   save();render();
 }
@@ -309,7 +338,7 @@ function saveProd(id) {
   const paie=type==='Femme'?(quota?Math.round((reel/quota)*taux):0):reel*taux;
   if(reel<=0)return alert('Production invalide');
   if(id){const p=D.productions.find(x=>x.id===id);if(p)Object.assign(p,{date,shift,employes,type,reel,quota,paie,notes});}
-  else D.productions.push({id:nextId++,date,shift,employes,type,reel,quota,paie,notes});
+  else D.productions.push({id:nextId++,date,shift,employes,type,reel,quota,paie,notes,createdBy:me()});
   closeM();save();render();
 }
 
@@ -334,7 +363,7 @@ function saveMontant(id) {
   const mt=num('mMt'); if(!mt)return alert('Montant requis');
   const type=val('mType'), client=val('mClient');
   if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=type;m.client=client;}}
-  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client});
+  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client,createdBy:me()});
   closeM();save();render();
 }
 function recalcDebts() {
@@ -384,9 +413,9 @@ function saveDep(id) {
   const cat=val('dCat'),emp=val('dEmp');
   if(id){const d=D.depenses.find(x=>x.id===id);if(d){d.date=val('dDate');d.montant=mt;d.categorie=cat;d.detail=val('dDet');d.employe=emp;}}
   else {
-    D.depenses.push({id:nextId++,date:val('dDate'),montant:mt,categorie:cat,detail:val('dDet'),employe:emp});
+    D.depenses.push({id:nextId++,date:val('dDate'),montant:mt,categorie:cat,detail:val('dDet'),employe:emp,createdBy:me()});
     if((cat==='Salaire journalier'||cat==='Salaire mensuel')&&emp) {
-      D.retraits.push({id:nextId++,date:val('dDate'),employe:emp,montant:mt,notes:'Salaire: '+(val('dDet')||cat)});
+      D.retraits.push({id:nextId++,date:val('dDate'),employe:emp,montant:mt,notes:'Salaire: '+(val('dDet')||cat),createdBy:me()});
     }
   }
   closeM();save();render();
@@ -418,7 +447,7 @@ function saveStock(type,id) {
   const obj={date:val('sDate'),categorie:val('sCat'),qte,unite:val('sUn'),desc:val('sDesc')};
   if(type==='E')obj.cout=num('sCout');
   if(id){const x=list.find(i=>i.id===id);if(x)Object.assign(x,obj);}
-  else list.push({id:nextId++,...obj});
+  else list.push({id:nextId++,...obj,createdBy:me()});
   closeM();save();render();
 }
 
@@ -443,7 +472,7 @@ function saveEmp(id) {
   const n=val('eName').trim(); if(!n)return alert('Nom requis');
   if(!id&&D.employes.find(e=>e.name===n))return alert('Ce nom existe deja');
   if(id){const e=D.employes.find(x=>x.id===id);if(e){e.name=n;e.type=val('eType');e.phone=val('ePhone');e.dateEmbauche=val('eDate');e.notes=val('eNotes');}}
-  else D.employes.push({id:nextId++,name:n,type:val('eType'),phone:val('ePhone'),dateEmbauche:val('eDate'),notes:val('eNotes')});
+  else D.employes.push({id:nextId++,name:n,type:val('eType'),phone:val('ePhone'),dateEmbauche:val('eDate'),notes:val('eNotes'),createdBy:me()});
   closeM();save();render();
 }
 
@@ -468,7 +497,7 @@ function retraitForm(id) {
 function saveRetrait(id,maxS) {
   const e=D.employes.find(x=>x.id===id); if(!e)return alert('Erreur');
   const mt=num('rMt'); if(mt<=0||mt>maxS)return alert('Montant invalide');
-  D.retraits.push({id:nextId++,date:val('rDate'),employe:e.name,montant:mt,notes:val('rNotes')});
+  D.retraits.push({id:nextId++,date:val('rDate'),employe:e.name,montant:mt,notes:val('rNotes'),createdBy:me()});
   closeM();save();render();
 }
 
@@ -766,17 +795,18 @@ function corbeilleHTML() {
   const items=[...D.trash].sort((a,b)=>b.deletedAt-a.deletedAt);
   const S=7*86400000;
   return `<h1>🗑️ Corbeille</h1><p class="desc">Rétention 7 jours avant suppression définitive</p>
-  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Motif</th><th>Suppression dans</th><th>Actions</th></tr></thead>
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Motif</th><th>Supprimé par</th><th>Suppression dans</th><th>Actions</th></tr></thead>
   <tbody>${items.length?items.map(t=>{const r=Math.max(0,S-(Date.now()-t.deletedAt));const j=Math.ceil(r/86400000);const nm=t.content.name||t.content.client||t.content.desc||t.content.detail||t.content.produit||'(?)';
   return `<tr><td>${new Date(t.deletedAt).toLocaleDateString('fr-FR')}</td><td><span class="badge bg-n">${t.type}</span></td>
-  <td>${esc(nm).slice(0,40)}</td><td>${esc(t.motif||'').slice(0,30)}</td><td>${j}j</td>
+  <td>${esc(nm).slice(0,40)}</td><td>${esc(t.motif||'').slice(0,30)}</td><td>${esc(t.createdBy||'—').slice(0,20)}</td><td>${j}j</td>
   <td class="gap-4"><button class="btn btn-sm btn-g" onclick="restoreT(${t.id})">Restaurer</button>
-  <button class="btn btn-sm btn-r" onclick="D.trash=D.trash.filter(x=>x.id!==${t.id});save();render()">Effacer</button></td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">Corbeille vide</td></tr>'}</tbody></table></div>
+  <button class="btn btn-sm btn-r" onclick="D.trash=D.trash.filter(x=>x.id!==${t.id});save();render()">Effacer</button></td></tr>`;}).join(''):'<tr><td colspan="7" class="empty">Corbeille vide</td></tr>'}</tbody></table></div>
   <p class="fs mt-8"><i class="ti ti-info-circle"></i> Les éléments sont automatiquement supprimés après 7 jours.</p>`;
 }
 
 // ─── INIT ───
 renderTabs();
+initAuth();
 loadSB().then(()=>{
   recalcDebts();save();
   document.documentElement.setAttribute('data-theme',theme);

@@ -65,9 +65,14 @@ tr:hover td{background:var(--tr-hover)}
 .filter-bar select,.filter-bar input[type=date]{font-size:11px;padding:4px 7px;border:1px solid var(--border);border-radius:6px;font-family:inherit;background:var(--bg);color:var(--text);outline:none;transition:background .2s,color .2s}
 .filter-bar select:focus,.filter-bar input:focus{border-color:var(--accent)}
 .filter-bar .filter-info{font-size:10.5px;color:var(--text3);white-space:nowrap}
-.theme-btn{margin-left:auto;background:none;border:none;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px;color:var(--text3);transition:all .15s;display:flex;align-items:center;gap:3px}
+.user-info{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--text2)}
+.user-info.logged{cursor:pointer;padding:3px 7px;border-radius:6px;transition:background .15s}
+.user-info.logged:hover{background:var(--hover);color:var(--text)}
+.uav{width:22px;height:22px;border-radius:50%;object-fit:cover}
+.uav-n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700}
+.theme-btn{background:none;border:none;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px;color:var(--text3);transition:all .15s;display:flex;align-items:center;gap:3px}
 .theme-btn:hover{color:var(--text);background:var(--hover)}
-.sp{flex:1}
+.sp{flex:1}.sp2{width:4px}
 .mt-8{margin-top:6px}.mt-12{margin-top:10px}.mb-12{margin-bottom:10px}
 .gap-4{display:flex;gap:4px}.gap-8{display:flex;gap:8px}.wrap{flex-wrap:wrap}.aic{align-items:center}
 .tc{text-align:center}.fs{font-size:11px;color:var(--text3)}
