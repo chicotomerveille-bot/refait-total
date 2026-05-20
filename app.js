@@ -1,0 +1,701 @@
+
+// ─── STATE ───
+const K = 'chips_pro';
+let D = { clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], employes:[], retraits:[], trash:[] };
+let nextId = 1;
+let currentPage = 'dash';
+
+function load() {
+  try {
+    const r = localStorage.getItem(K);
+    if (r) { const p = JSON.parse(r); D = p; 
+      const all = [...p.clients,...p.commandes,...p.productions,...p.montants,...p.depenses,...p.stockE,...p.stockS,...p.employes,...p.retraits,...p.trash];
+      nextId = all.reduce((m,x)=>Math.max(m,x.id||0),0)+1;
+    }
+  } catch(_) {}
+}
+function save() { localStorage.setItem(K,JSON.stringify(D)); }
+function today() { return new Date().toISOString().slice(0,10); }
+function fmt(n) { return (n||0).toLocaleString('fr-FR')+' FCFA'; }
+function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function prodEmps(p){return p.employes||(p.employe?[p.employe]:['Employé']);}
+
+// ─── NAV ───
+function nav(p) {
+  currentPage = p;
+  document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
+  document.querySelectorAll('.page').forEach(el => el.classList.toggle('active',el.id==='p-'+p));
+}
+
+function renderTabs() {
+  const items = [
+    ['dash','📊','Tableau de Bord'],['clients','👥','Clients'],['commandes','🛒','Commandes'],
+    ['prod','🏭','Production'],['montants','💰','Montants'],['depenses','💸','Dépenses'],
+    ['stock','📦','Stock'],['finances','📈','Finances'],['analyses','🧠','Analyses'],
+    ['employes','👷','Employés'],['exporter','📥','Exporter'],['corbeille','🗑️','Corbeille']
+  ];
+  document.getElementById('tabs').innerHTML = items.map(([id,ico,label]) =>
+    `<a data-p="${id}" class="${id===currentPage?'active':''}" onclick="nav('${id}');render()">${ico} ${label}</a>`
+  ).join('');
+}
+
+// ─── MODAL ───
+let modalCtx = null;
+function openM(html,cb) { document.getElementById('modalBody').innerHTML=html; document.getElementById('modal').classList.add('o'); modalCtx=cb||null; }
+function closeM() { document.getElementById('modal').classList.remove('o'); modalCtx=null; }
+document.getElementById('modal').addEventListener('click',function(e){if(e.target===this)closeM()});
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeM()});
+function val(id) { return document.getElementById(id)?.value||''; }
+function num(id) { return +document.getElementById(id)?.value||0; }
+
+// ─── TRASH ───
+function trashIt(type,item) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now()}); }
+function cleanTrash() { const S=7*86400000; const b=D.trash.length; D.trash=D.trash.filter(t=>Date.now()-t.deletedAt<S); if(D.trash.length!==b)save(); }
+function restoreT(id) { const t=D.trash.find(x=>x.id===id); if(!t)return; D[t.type].push(t.content); D.trash=D.trash.filter(x=>x.id!==id); save(); render(); }
+
+// ─── CLIENT ───
+function clientForm(c) {
+  const edit=!!c;
+  openM(`
+    <h3>${edit?'✏️ Modifier':'👥 Nouveau'} client</h3>
+    <label>Nom</label><input id="cName" value="${edit?esc(c.name):''}" />
+    <label>Téléphone</label><input id="cPhone" value="${edit?esc(c.phone||''):''}" />
+    <label>Adresse</label><input id="cAddr" value="${edit?esc(c.addr||''):''}" />
+    <div class="m-row"><div><label>Dette initiale</label><input type="number" id="cDi" value="${edit?c.detteInit:0}" /></div>
+    <div>${edit?`<label>Dette actuelle</label><input type="number" id="cDc" value="${c.detteCur}" />`:'<label></label><div></div>'}</div></div>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveClient(${edit?c.id:'null'})">${edit?'Modifier':'Enregistrer'}</button></div>
+  `);
+}
+
+function saveClient(id) {
+  const n=val('cName').trim(); if(!n)return alert('Nom requis');
+  if(!id&&D.clients.find(c=>c.name===n))return alert('Ce nom existe deja');
+  const di=num('cDi');
+  if(id) { const c=D.clients.find(x=>x.id===id); if(c){c.name=n;c.phone=val('cPhone');c.addr=val('cAddr');c.detteInit=di;c.detteCur=num('cDc');} }
+  else D.clients.push({id:nextId++,name:n,phone:val('cPhone'),addr:val('cAddr'),detteInit:di,detteCur:di});
+  closeM();save();render();
+}
+
+function payerDette(id) {
+  const c=D.clients.find(x=>x.id===id); if(!c)return;
+  const mt=prompt('Montant recu (FCFA) :',(c.detteCur||0).toString()); if(!mt||+mt<=0)return;
+  const reste=+mt; c.detteCur=Math.max(0,(c.detteCur||0)-reste);
+  D.montants.push({id:nextId++,date:today(),desc:'Paiement dette - '+c.name,type:'Dette reçue',client:c.name,montant:reste});
+  // Reduce commande restes proportionally (oldest first)
+  const cmds=D.commandes.filter(x=>x.client===c.name&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
+  let left=reste;
+  for(const cmd of cmds){
+    if(left<=0)break;
+    const pay=Math.min(left,cmd.reste);
+    cmd.paye+=pay; cmd.reste=cmd.prixTotal-cmd.paye; left-=pay;
+    if(cmd.reste<=0)cmd.statut='Livrée';
+  }
+  save();render();
+}
+
+function confirmDel(msg,type,item) {
+  if(!confirm(msg))return;
+  if(type==='commandes'){
+    const cl=D.clients.find(x=>x.name===item.client);
+    if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
+  }
+  trashIt(type,item);
+  D[type]=D[type].filter(x=>x.id!==item.id);
+  save();render();
+}
+
+// ─── COMMANDE ───
+function commandeForm(cmd) {
+  const e=!!cmd; const clOpts=D.clients.map(c=>`<option value="${esc(c.name)}"${e&&cmd.client===c.name?' selected':''}>${esc(c.name)}</option>`).join('');
+  openM(`
+    <h3>${e?'✏️ Modifier':'🛒 Nouvelle'} commande</h3>
+    <label>Client</label><select id="coCli">${clOpts}<option value="">— Nouveau —</option></select>
+    <label>Nouveau client</label><input id="coNew" placeholder="Nom" />
+    <div class="m-row"><div><label>Date</label><input type="date" id="coDate" value="${e?cmd.date:today()}" /></div>
+    <div><label>Produit</label><input id="coProd" value="${e?esc(cmd.produit):'Chips'}" /></div></div>
+    <div class="m-row"><div><label>Quantité</label><input type="number" id="coQte" value="${e?cmd.qte:1}" /></div>
+    <div><label>Prix unitaire</label><input type="number" id="coPu" value="${e?Math.round(cmd.prixTotal/(cmd.qte||1)):25000}" /></div></div>
+    <div class="m-row"><div><label>Acompte</label><input type="number" id="coPaye" value="${e?cmd.paye:0}" /></div>
+    <div><label>Statut</label><select id="coStat"><option value="En attente"${e&&cmd.statut==='En attente'?' selected':''}>⏳ En attente</option>
+    <option value="Livrée"${e&&cmd.statut==='Livrée'?' selected':''}>✅ Livrée</option>
+    <option value="Annulée"${e&&cmd.statut==='Annulée'?' selected':''}>❌ Annulée</option></select></div></div>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveCommande(${e?cmd.id:'null'})">${e?'Modifier':'Enregistrer'}</button></div>
+  `);
+  document.getElementById('coCli').addEventListener('change',function(){document.getElementById('coNew').disabled=!!this.value});
+}
+
+function saveCommande(id) {
+  const sel=val('coCli'), nc=val('coNew').trim(), client=sel||nc||'Client';
+  const date=val('coDate'), prod=val('coProd').trim()||'Chips', qte=num('coQte')||1, pu=num('coPu')||25000;
+  const pt=qte*pu, paye=num('coPaye'), stat=val('coStat');
+  if(id) {
+    const c=D.commandes.find(x=>x.id===id); if(!c)return;
+    const oldReste=c.reste, oldClient=c.client;
+    const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
+    // Remove old debt from previous client
+    const oldCl=D.clients.find(x=>x.name===oldClient);
+    if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
+    // Add new debt to current client
+    let curCl=D.clients.find(x=>x.name===client);
+    if(!curCl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0});curCl=D.clients[D.clients.length-1];}
+    if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
+    if(diff!==0) D.montants.push({id:nextId++,date,desc:diff>0?'Acompte commande - '+client:'Correction acompte - '+client,type:'Vente',client,montant:diff});
+  } else {
+    D.commandes.push({id:nextId++,client,date,produit:prod,qte,prixTotal:pt,paye,reste:pt-paye,statut:stat});
+    if(paye>0) D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye});
+    let cl=D.clients.find(x=>x.name===client);
+    if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0});cl=D.clients[D.clients.length-1];}
+    if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
+  }
+  closeM();save();render();
+}
+
+function payerCmd(id) {
+  const c=D.commandes.find(x=>x.id===id); if(!c)return;
+  const r=c.prixTotal-c.paye; if(r<=0)return alert('Déjà payé');
+  const mt=prompt('Montant versé (FCFA) :',r.toString()); if(!mt||+mt<=0)return;
+  c.paye+=+mt; c.reste=c.prixTotal-c.paye; if(c.reste<=0)c.statut='Livrée';
+  D.montants.push({id:nextId++,date:today(),desc:'Paiement commande - '+c.client,type:'Vente',client:c.client,montant:+mt});
+  const cl=D.clients.find(x=>x.name===c.client); if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-(+mt));
+  save();render();
+}
+
+// ─── PRODUCTION ───
+function prodForm(p) {
+  const e=!!p; const femEmp=D.employes.filter(x=>x.type==='Femme'); const otherEmp=D.employes.filter(x=>x.type!=='Femme');
+  const checked=e?(p.employes||(p.employe?[p.employe]:[])):[];
+  openM(`
+    <h3>${e?'✏️ Modifier':'🏭 Nouvelle'} production</h3>
+    <div class="m-row"><div><label>Date</label><input type="date" id="prDate" value="${e?p.date:today()}" /></div>
+    <div><label>Shift</label><select id="prShift"><option value="Jour"${e&&p.shift==='Jour'?' selected':''}>☀️ Jour</option>
+    <option value="Nuit"${e&&p.shift==='Nuit'?' selected':''}>🌙 Nuit</option></select></div></div>
+    <div id="prEmpSection"></div>
+    <div class="m-row"><div><label>Type</label><select id="prType"><option value="Femme"${e&&p.type==='Femme'?' selected':''}>👩 Femme</option>
+    <option value="Homme"${e&&p.type==='Homme'?' selected':''}>👨 Homme</option></select></div>
+    <div><label>Réalisé <span id="prU">(sachets)</span></label><input type="number" id="prReel" value="${e?p.reel:''}" /></div></div>
+    <div class="m-row"><div><label>Quota</label><input type="number" id="prQuota" value="${e?p.quota:''}" /></div><div><label>💰 Paie</label><input type="number" id="prPaie" value="${e?p.paie:''}" readonly style="font-weight:700;color:var(--accent)" /></div></div>
+    <div id="prCalc" class="calc"></div>
+    <label>Notes</label><textarea id="prNotes">${e?esc(p.notes||''):''}</textarea>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveProd(${e?p.id:'null'})">${e?'Modifier':'Enregistrer'}</button></div>
+  `);
+  function upd() {
+    const type=val('prType'),sec=document.getElementById('prEmpSection');
+    if(type==='Femme'){
+      sec.innerHTML='<label>Employées</label>'+femEmp.map(x=>`<label style="display:flex;align-items:center;gap:6px;font-weight:400;text-transform:none;font-size:13px;margin-bottom:3px;cursor:pointer"><input type="checkbox" class="prFem" value="${esc(x.name)}"${checked.includes(x.name)?' checked':''}>${esc(x.name)}</label>`).join('');
+    } else {
+      const cur=e&&(p.type==='Homme'||p.type==='Autre')?(p.employes?p.employes[0]:p.employe):'';
+      sec.innerHTML=`<div class="m-row"><div><label>Employé</label><select id="prEmp"><option value="">— Choisir —</option>${otherEmp.map(x=>`<option value="${esc(x.name)}"${cur===x.name?' selected':''}>${esc(x.name)}</option>`).join('')}</select></div><div><label>Manuel</label><input id="prEmpM" value="${cur&&!otherEmp.find(x=>x.name===cur)?esc(cur):''}" /></div></div>`;
+    }
+  }
+  document.getElementById('prType').addEventListener('change',upd);upd();
+  ['prShift','prType','prReel','prQuota'].forEach(id=>{
+    const el=document.getElementById(id);if(el){el.addEventListener('change',calcP);el.addEventListener('input',calcP);}
+  });
+  calcP();
+}
+
+function calcP() {
+  const shift=val('prShift')||'Jour', type=val('prType')||'Femme', reel=num('prReel');
+  const u=document.getElementById('prU'); if(u)u.textContent=type==='Femme'?'(sachets)':'(balles)';
+  const qi=document.getElementById('prQuota'); const pi=document.getElementById('prPaie'); const el=document.getElementById('prCalc');
+  if(!qi||!pi||!el)return;
+  if(!qi.value) qi.value=type==='Femme'?'300':'6';
+  const quota=+qi.value||(type==='Femme'?300:6);
+  if(type==='Femme') {
+    const taux=shift==='Jour'?1800:2000; const paie=quota?Math.round((reel/quota)*taux):0; const pct=quota?Math.round(reel/quota*100):0;
+    pi.value=paie;
+    el.innerHTML=`<div class="r"><span>📋 Taux</span><span class="v">${taux.toLocaleString()} FCFA</span></div>
+    <div class="r"><span>📦 ${reel}/${quota} sachets</span><span>${pct}%</span></div>
+    <div class="prog"><div class="prog-f" style="width:${Math.min(pct,100)}%"></div></div>
+    <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie</span><span class="v">${paie.toLocaleString()} FCFA</span></div>`;
+  } else {
+    const taux=shift==='Jour'?389:417; const paie=reel*taux; const pct=quota?Math.round(reel/quota*100):0;
+    pi.value=paie;
+    el.innerHTML=`<div class="r"><span>💰 Taux</span><span class="v">${taux.toLocaleString()} F/balle</span></div>
+    <div class="r"><span>🎯 ${reel}/${quota} balles</span><span>${pct}%</span></div>
+    <div class="prog"><div class="prog-f" style="width:${Math.min(pct,100)}%"></div></div>
+    <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie</span><span class="v">${paie.toLocaleString()} FCFA</span></div>`;
+  }
+}
+
+function saveProd(id) {
+  const date=val('prDate'), shift=val('prShift'), type=val('prType');
+  let employes;
+  if(type==='Femme'){
+    const cbs=document.querySelectorAll('.prFem:checked');
+    employes=[].map.call(cbs,c=>c.value);
+    if(!employes.length)return alert('Sélectionnez au moins une employée');
+  } else {
+    const emp=val('prEmp')||val('prEmpM').trim()||'Employé';
+    employes=[emp];
+  }
+  const reel=num('prReel'), quota=num('prQuota')||(type==='Femme'?300:6);
+  const notes=val('prNotes').trim();
+  const taux=type==='Femme'?(shift==='Jour'?1800:2000):(shift==='Jour'?389:417);
+  const paie=type==='Femme'?(quota?Math.round((reel/quota)*taux):0):reel*taux;
+  if(reel<=0)return alert('Production invalide');
+  if(id){const p=D.productions.find(x=>x.id===id);if(p)Object.assign(p,{date,shift,employes,type,reel,quota,paie,notes});}
+  else D.productions.push({id:nextId++,date,shift,employes,type,reel,quota,paie,notes});
+  closeM();save();render();
+}
+
+// ─── MONTANT ───
+function montantForm(m) {
+  const e=!!m; const clOpts=D.clients.map(c=>`<option value="${esc(c.name)}"${e&&m.client===c.name?' selected':''}>${esc(c.name)}</option>`).join('');
+  openM(`
+    <h3>${e?'✏️ Modifier':'💰 Nouveau'} montant</h3>
+    <div class="m-row"><div><label>Date</label><input type="date" id="mDate" value="${e?m.date:today()}" /></div>
+    <div><label>Montant</label><input type="number" id="mMt" value="${e?m.montant:''}" /></div></div>
+    <label>Description</label><input id="mDesc" value="${e?esc(m.desc):''}" />
+    <div class="m-row"><div><label>Type</label><select id="mType"><option value="Vente"${e&&m.type==='Vente'?' selected':''}>Vente</option>
+    <option value="Dette reçue"${e&&m.type==='Dette reçue'?' selected':''}>Dette reçue</option>
+    <option value="Autre"${e&&m.type==='Autre'?' selected':''}>Autre</option></select></div>
+    <div><label>Client</label><select id="mClient"><option value="">—</option>${clOpts}</select></div></div>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveMontant(${e?m.id:'null'})">${e?'Modifier':'Enregistrer'}</button></div>
+  `);
+}
+
+function saveMontant(id) {
+  const mt=num('mMt'); if(!mt)return alert('Montant requis');
+  if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=val('mType');m.client=val('mClient');}}
+  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type:val('mType'),client:val('mClient')});
+  closeM();save();render();
+}
+
+// ─── DÉPENSE ───
+const CATD=['Électricité','Eau','Salaire journalier','Salaire mensuel','Réparation tricycle','Réparation moto','Essence tricycle','Essence moto','Matière première','Emballage','Autre'];
+function depForm(d) {
+  const e=!!d; const catOpts=CATD.map(c=>`<option value="${c}"${e&&d.categorie===c?' selected':''}>${c}</option>`).join('');
+  const empOpts=D.employes.map(x=>`<option value="${esc(x.name)}"${e&&d.employe===x.name?' selected':''}>${esc(x.name)}</option>`).join('');
+  openM(`
+    <h3>${e?'✏️ Modifier':'💸 Nouvelle'} dépense</h3>
+    <div class="m-row"><div><label>Date</label><input type="date" id="dDate" value="${e?d.date:today()}" /></div>
+    <div><label>Montant</label><input type="number" id="dMt" value="${e?d.montant:''}" /></div></div>
+    <div class="m-row"><div><label>Catégorie</label><select id="dCat">${catOpts}</select></div>
+    <div><label>Détail</label><input id="dDet" value="${e?esc(d.detail||''):''}" /></div></div>
+    <div id="dEmpContainer"><label>Employé</label><input id="dEmp" value="${e?esc(d.employe||''):''}" /></div>
+    <div id="dEmpInfo" class="fs" style="margin-top:-8px;margin-bottom:8px"></div>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveDep(${e?d.id:'null'})">${e?'Modifier':'Enregistrer'}</button></div>
+  `);
+  const catEl=document.getElementById('dCat');
+  const upd=()=>{const cat=catEl.value,ct=document.getElementById('dEmpContainer'),info=document.getElementById('dEmpInfo');
+    if(cat==='Salaire journalier'||cat==='Salaire mensuel'){
+      const cur=document.getElementById('dEmp')?.value||'';
+      ct.innerHTML=`<label>Employé</label><select id="dEmp">${empOpts}<option value="">— Sélectionner —</option></select>`;
+      if(cur)document.getElementById('dEmp').value=cur;
+      const sel=document.getElementById('dEmp');
+      sel.onchange=function(){const emp=this.value;if(!emp){info.textContent='';return;}
+        const paie=D.productions.filter(p=>p.employe===emp).reduce((s,p)=>s+p.paie,0);
+        const retire=D.retraits.filter(r=>r.employe===emp).reduce((s,r)=>s+r.montant,0);
+        info.innerHTML=`💰 Paie: ${fmt(paie)} | ↩️ Retiré: ${fmt(retire)} | 🏦 Solde: <strong>${fmt(paie-retire)}</strong>`;};
+      sel.onchange();}else{ct.innerHTML='<label>Employé</label><input id="dEmp" value="" />';info.textContent='';}};
+  catEl.addEventListener('change',upd);upd();
+}
+
+function saveDep(id) {
+  const mt=num('dMt'); if(!mt)return alert('Montant requis');
+  const cat=val('dCat'),emp=val('dEmp');
+  if(id){const d=D.depenses.find(x=>x.id===id);if(d){d.date=val('dDate');d.montant=mt;d.categorie=cat;d.detail=val('dDet');d.employe=emp;}}
+  else {
+    D.depenses.push({id:nextId++,date:val('dDate'),montant:mt,categorie:cat,detail:val('dDet'),employe:emp});
+    if((cat==='Salaire journalier'||cat==='Salaire mensuel')&&emp) {
+      D.retraits.push({id:nextId++,date:val('dDate'),employe:emp,montant:mt,notes:'Salaire: '+(val('dDet')||cat)});
+    }
+  }
+  closeM();save();render();
+}
+
+// ─── STOCK ───
+const STK=['Farine','Sachets rouleaux','Sachets grand','Sachets petit'];
+function stockForm(type,item) {
+  const e=!!item; const isIn=type==='E'; const catOpts=STK.map(c=>`<option value="${c}"${e&&item.categorie===c?' selected':''}>${c}</option>`).join('');
+  openM(`
+    <h3>${e?'✏️':'📦'} ${isIn?'Entrée':'Sortie'} stock</h3>
+    <div class="m-row"><div><label>Date</label><input type="date" id="sDate" value="${e?item.date:today()}" /></div>
+    <div><label>Catégorie</label><select id="sCat">${catOpts}</select></div></div>
+    <div class="m-row"><div><label>Quantité</label><input type="number" id="sQte" value="${e?item.qte:''}" /></div>
+    <div><label>Unité</label><select id="sUn"><option value="kg"${e&&item.unite==='kg'?' selected':''}>kg</option>
+    <option value="rouleau"${e&&item.unite==='rouleau'?' selected':''}>rouleau</option>
+    <option value="sac"${e&&item.unite==='sac'?' selected':''}>sac</option>
+    <option value="pièce"${e&&item.unite==='pièce'?' selected':''}>pièce</option></select></div></div>
+    ${isIn?`<label>Coût</label><input type="number" id="sCout" value="${e?item.cout||'':''}" />`:''}
+    <label>Description</label><textarea id="sDesc">${e?esc(item.desc||''):''}</textarea>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveStock('${type}',${e?item.id:'null'})">Enregistrer</button></div>
+  `);
+}
+
+function saveStock(type,id) {
+  const qte=num('sQte'); if(!qte)return alert('Quantité requise');
+  const list=type==='E'?D.stockE:D.stockS;
+  const obj={date:val('sDate'),categorie:val('sCat'),qte,unite:val('sUn'),desc:val('sDesc')};
+  if(type==='E')obj.cout=num('sCout');
+  if(id){const x=list.find(i=>i.id===id);if(x)Object.assign(x,obj);}
+  else list.push({id:nextId++,...obj});
+  closeM();save();render();
+}
+
+// ─── EMPLOYÉ ───
+function empForm(e) {
+  const edit=!!e;
+  openM(`
+    <h3>${edit?'✏️ Modifier':'👷 Nouvel'} employé</h3>
+    <label>Nom</label><input id="eName" value="${edit?esc(e.name):''}" />
+    <div class="m-row"><div><label>Type</label><select id="eType"><option value="Femme"${edit&&e.type==='Femme'?' selected':''}>👩 Femme</option>
+    <option value="Homme"${edit&&e.type==='Homme'?' selected':''}>👨 Homme</option>
+    <option value="Autre"${edit&&e.type==='Autre'?' selected':''}>👤 Autre</option></select></div>
+    <div><label>Téléphone</label><input id="ePhone" value="${edit?esc(e.phone||''):''}" /></div></div>
+    <label>Date d'embauche</label><input type="date" id="eDate" value="${edit?e.dateEmbauche:today()}" />
+    <label>Notes</label><textarea id="eNotes">${edit?esc(e.notes||''):''}</textarea>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveEmp(${edit?e.id:'null'})">${edit?'Modifier':'Enregistrer'}</button></div>
+  `);
+}
+
+function saveEmp(id) {
+  const n=val('eName').trim(); if(!n)return alert('Nom requis');
+  if(!id&&D.employes.find(e=>e.name===n))return alert('Ce nom existe deja');
+  if(id){const e=D.employes.find(x=>x.id===id);if(e){e.name=n;e.type=val('eType');e.phone=val('ePhone');e.dateEmbauche=val('eDate');e.notes=val('eNotes');}}
+  else D.employes.push({id:nextId++,name:n,type:val('eType'),phone:val('ePhone'),dateEmbauche:val('eDate'),notes:val('eNotes')});
+  closeM();save();render();
+}
+
+function retraitForm(id) {
+  const e=D.employes.find(x=>x.id===id); if(!e)return;
+  const paie=D.productions.reduce((s,p)=>prodEmps(p).includes(e.name)?s+(p.type==='Femme'?Math.round(p.paie/prodEmps(p).length):p.paie):s,0);
+  const retire=D.retraits.filter(r=>r.employe===e.name).reduce((s,r)=>s+r.montant,0);
+  const solde=paie-retire;
+  openM(`
+    <h3>💸 Retrait — ${esc(e.name)}</h3>
+    <div class="calc"><div class="r"><span>💰 Paie gagnée</span><span class="v">${fmt(paie)}</span></div>
+    <div class="r"><span>↩️ Déjà retiré</span><span class="v">${fmt(retire)}</span></div>
+    <div class="r" style="font-size:16px;color:var(--accent)"><span>🏦 Solde</span><span class="v">${fmt(solde)}</span></div></div>
+    <div class="m-row"><div><label>Date</label><input type="date" id="rDate" value="${today()}" /></div>
+    <div><label>Montant</label><input type="number" id="rMt" value="${solde}" max="${solde}" /></div></div>
+    <label>Notes</label><textarea id="rNotes"></textarea>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveRetrait(${id},${solde})">Retirer</button></div>
+  `);
+}
+
+function saveRetrait(id,maxS) {
+  const e=D.employes.find(x=>x.id===id); if(!e)return alert('Erreur');
+  const mt=num('rMt'); if(mt<=0||mt>maxS)return alert('Montant invalide');
+  D.retraits.push({id:nextId++,date:val('rDate'),employe:e.name,montant:mt,notes:val('rNotes')});
+  closeM();save();render();
+}
+
+// ─── EXPORT ───
+function exportData() {
+  const b=new Blob([JSON.stringify(D,null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='chips-data.json';a.click();
+}
+
+// ─── RENDER ───
+function render() {
+  cleanTrash(); renderTabs();
+  document.getElementById('p-dash').innerHTML = dashHTML();
+  document.getElementById('p-clients').innerHTML = clientsHTML();
+  document.getElementById('p-commandes').innerHTML = commandesHTML();
+  document.getElementById('p-prod').innerHTML = prodHTML();
+  document.getElementById('p-montants').innerHTML = montantsHTML();
+  document.getElementById('p-depenses').innerHTML = depensesHTML();
+  document.getElementById('p-stock').innerHTML = stockHTML();
+  document.getElementById('p-finances').innerHTML = financesHTML();
+  document.getElementById('p-analyses').innerHTML = analysesHTML();
+  document.getElementById('p-employes').innerHTML = employesHTML();
+  document.getElementById('p-exporter').innerHTML = exporterHTML();
+  document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
+  dashCharts();
+}
+
+function dashHTML() {
+  const totM=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
+  const bilan=totM-totD;
+  const totalSachets=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0);
+  const totalBalles=Math.floor(totalSachets/50);
+  const prods=[...D.productions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const byType={}; D.montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
+
+  const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
+  const wkProds=D.productions.filter(p=>new Date(p.date)>=weekAgo&&p.type==='Femme');
+  const wkBalles=Math.floor(wkProds.reduce((s,p)=>s+p.reel,0)/50);
+
+  return `<h1>📊 Tableau de Bord</h1><p class="desc">Vue d'ensemble</p>
+  <div class="grid">
+    <div class="card accent"><div class="big">${totalBalles}</div><div class="lbl">🏀 Balles total</div></div>
+    <div class="card"><div class="big">${D.clients.length}</div><div class="lbl">👥 Clients</div></div>
+    <div class="card"><div class="big" style="color:var(--green)">${fmt(totM)}</div><div class="lbl">💰 Reçus</div></div>
+    <div class="card"><div class="big" style="color:var(--red)">${fmt(totD)}</div><div class="lbl">💸 Dépenses</div></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr">
+    <div class="card"><canvas id="chartFin" height="180"></canvas></div>
+    <div class="card"><canvas id="chartDep" height="180"></canvas></div>
+  </div>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
+    <div class="card tc"><div class="big" style="color:${bilan>=0?'var(--green)':'var(--red)'}">${fmt(bilan)}</div><div class="lbl">📋 Bilan net</div></div>
+    <div class="card tc"><div class="big">${wkBalles}</div><div class="lbl">🏀 Balles (7j)</div></div>
+    <div class="card tc"><div class="big">${fmt(D.clients.reduce((s,c)=>s+(c.detteCur||0),0))}</div><div class="lbl">📌 Dettes clients</div></div>
+  </div>
+  <div class="card"><h2>🏭 Dernières productions</h2>${prods.length?prods.map(p=>`
+    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+      <span>${esc(p.date)} · ${esc(prodEmps(p).join(', '))}</span>
+      <span class="badge ${p.type==='Femme'?'bg-k':'bg-b'}">${esc(p.type)}</span>
+      <span>${esc(p.reel)} ${p.type==='Femme'?'sach → '+Math.floor(p.reel/50)+' balles':'ball'}</span>
+      <span style="font-weight:600">${fmt(p.paie)}</span>
+    </div>`).join(''):'<div class="empty">Aucune production</div>'}</div>`;
+}
+
+function dashCharts() {
+  const totM=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const catE=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const catO=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(6).reduce((s,[,v])=>s+v,0);
+
+  const COLORS=['#3b3bfa','#22c55e','#f59e0b','#ef4444','#a78bfa','#ec4899','#14b8a6','#f97316'];
+
+  const c1=document.getElementById('chartFin'); if(c1&&Chart.getChart(c1))Chart.getChart(c1).destroy();
+  if(c1){
+    new Chart(c1,{type:'doughnut',data:{labels:['Revenus','Depenses'],datasets:[{data:[totM,totD],backgroundColor:['#22c55e','#ef4444'],borderWidth:0}]},options:{cutout:'70%',responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{padding:12,font:{size:11,family:'Inter'}}},title:{display:true,text:'Revenus vs Depenses',font:{size:13,family:'Inter',weight:'600'},padding:{bottom:8}}}}});
+  }
+  const c2=document.getElementById('chartDep'); if(c2&&Chart.getChart(c2))Chart.getChart(c2).destroy();
+  if(c2){
+    const labels=catE.map(([k])=>k); const data=catE.map(([,v])=>v);
+    if(catO>0){labels.push('Autres');data.push(catO);}
+    new Chart(c2,{type:'doughnut',data:{labels,datasets:[{data,backgroundColor:COLORS.slice(0,labels.length),borderWidth:0}]},options:{cutout:'70%',responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{padding:10,font:{size:10,family:'Inter'},boxWidth:10,boxHeight:10}},title:{display:true,text:'Depenses par categorie',font:{size:13,family:'Inter',weight:'600'},padding:{bottom:8}}}}});
+  }
+}
+
+function clientsHTML() {
+  return `<h1>👥 Clients & Dettes</h1><p class="desc">Suivi des clients et dettes</p>
+  <div class="toolbar"><button class="btn btn-p" onclick="clientForm()">+ Ajouter</button></div>
+  <div class="table-wrap"><table><thead><tr><th>Client</th><th>Tél</th><th>Dette init.</th><th>Dette actuelle</th><th>Progression</th><th>Actions</th></tr></thead>
+  <tbody>${D.clients.length?D.clients.map(c=>{
+    const pct=c.detteInit?Math.round(((c.detteInit-(c.detteCur||0))/c.detteInit)*100):0;
+    return `<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.phone||'—')}</td><td>${fmt(c.detteInit)}</td>
+    <td style="color:${(c.detteCur||0)>0?'var(--red)':'var(--green)'}">${fmt(c.detteCur||0)}</td>
+    <td><div class="prog" style="width:80px;display:inline-block;vertical-align:middle;margin-right:6px"><div class="prog-f" style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--amber)'}"></div></div>${pct}%</td>
+    <td class="gap-4"><button class="btn btn-sm btn-gh" onclick="clientForm(D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
+    <button class="btn btn-sm btn-g" onclick="payerDette(${c.id})"><i class="ti ti-cash"></i></button>
+    <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce client?','clients',D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button></td></tr>`;
+  }).join(''):'<tr><td colspan="6" class="empty">Aucun client</td></tr>'}</tbody></table></div>`;
+}
+
+function commandesHTML() {
+  return `<h1>🛒 Commandes</h1><p class="desc">Suivi des commandes clients</p>
+  <div class="toolbar"><button class="btn btn-p" onclick="commandeForm()">+ Nouvelle</button></div>
+  <div class="table-wrap"><table><thead><tr><th>Client</th><th>Produit</th><th>Qté</th><th>Total</th><th>✅ Payé</th><th>⏳ Reste</th><th>Statut</th><th>Actions</th></tr></thead>
+  <tbody>${D.commandes.length?[...D.commandes].sort((a,b)=>b.date.localeCompare(a.date)).map(c=>{
+    const r=c.prixTotal-c.paye;
+    return `<tr><td>${esc(c.client)}<br><span class="fs">${esc(c.date)}</span></td><td>${esc(c.produit)}</td><td>${esc(c.qte)}</td>
+    <td><strong>${fmt(c.prixTotal)}</strong></td><td style="color:var(--green)">${fmt(c.paye)}</td>
+    <td style="color:${r>0?'var(--red)':'var(--green)'}">${fmt(r)}</td>
+    <td><span class="badge ${c.statut==='Livrée'?'bg-g':c.statut==='Annulée'?'bg-r':'bg-y'}">${esc(c.statut)}</span></td>
+    <td class="gap-4"><button class="btn btn-sm btn-gh" onclick="commandeForm(D.commandes.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
+    ${r>0?`<button class="btn btn-sm btn-g" onclick="payerCmd(${c.id})"><i class="ti ti-cash"></i></button>`:''}
+    <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cette commande?','commandes',D.commandes.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button></td></tr>`;
+  }).join(''):'<tr><td colspan="8" class="empty">Aucune commande</td></tr>'}</tbody></table></div>`;
+}
+
+// Week calculation
+function getWeek(d){const t=new Date(d);t.setHours(0,0,0,0);t.setDate(t.getDate()+3-(t.getDay()+6)%7);return Math.ceil(((t-new Date(t.getFullYear(),0,4))/86400000+1)/7);}
+function weekRange(w,y){const d=new Date(y,0,1+((w-1)*7));d.setDate(d.getDate()+(1-d.getDay()+7)%7-3);return d;}
+let curWeek=0, curYear=0;
+
+function prodHTML() {
+  if(!curWeek){const n=new Date();curWeek=getWeek(n);curYear=n.getFullYear();}
+  const wStart=weekRange(curWeek,curYear);wStart.setHours(0,0,0,0);
+  const wEnd=new Date(wStart);wEnd.setDate(wEnd.getDate()+6);
+  const fmtD=d=>d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+  const prods=D.productions.filter(p=>{
+    const d=new Date(p.date);return d>=wStart&&d<=wEnd;
+  });
+  const empPaie={};
+  prods.forEach(p=>{const emps=prodEmps(p),s=p.type==='Femme'?Math.round(p.paie/emps.length):p.paie;emps.forEach(n=>{empPaie[n]=(empPaie[n]||0)+s;});});
+  const stats=prods.reduce((a,p)=>{a.paie+=p.paie;if(p.type==='Femme')a.sachets+=p.reel;return a;},{paie:0,sachets:0});
+  const balles=Math.floor(stats.sachets/50);
+
+  return `<h1>🏭 Production</h1><p class="desc">Semaine du ${fmtD(wStart)} au ${fmtD(wEnd)}</p>
+  <div class="week-nav">
+    <button onclick="curWeek--;if(curWeek<1){curWeek=52;curYear--}render()">←</button>
+    <div><div class="wn-label">Semaine ${curWeek} — ${curYear}</div><div class="wn-sub">${fmtD(wStart)} → ${fmtD(wEnd)}</div></div>
+    <button onclick="curWeek++;if(curWeek>52){curWeek=1;curYear++}render()">→</button>
+    <button onclick="{const n=new Date();curWeek=getWeek(n);curYear=n.getFullYear();render()}">📅 Aujourd'hui</button>
+    <span class="sp"></span><button class="btn btn-p" onclick="prodForm()">+ Ajouter</button>
+  </div>
+  <div class="grid">
+    <div class="card accent"><div class="big">${balles}</div><div class="lbl">🏀 Balles produites</div></div>
+    <div class="card"><div class="big">${stats.sachets}</div><div class="lbl">📦 Sachets (femmes)</div></div>
+    <div class="card"><div class="big" style="color:var(--green)">${fmt(stats.paie)}</div><div class="lbl">💰 Paies semaine</div></div>
+    <div class="card"><div class="big">${prods.length}</div><div class="lbl">📋 Entrées total</div></div>
+  </div>
+  ${Object.keys(empPaie).length?`<div class="card mb-12"><h2>💳 Paies par employé</h2>${Object.entries(empPaie).map(([name,paie])=>`
+    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${esc(name)}</span><span style="font-weight:600">${fmt(paie)}</span></div>`).join('')}</div>`:''}
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Employé</th><th>Shift</th><th>Type</th><th>Quota</th><th>Réel</th><th>🏀 Balles</th><th>Écart</th><th>💰 Paie</th><th></th></tr></thead>
+  <tbody>${prods.length?[...prods].sort((a,b)=>b.date.localeCompare(a.date)).map(p=>{
+    const ec=p.reel-p.quota;
+    return `<tr><td>${esc(p.date)}</td><td>${esc(prodEmps(p).join(', '))}</td><td><span class="badge ${p.shift==='Jour'?'bg-y':'bg-b'}">${esc(p.shift)}</span></td>
+    <td><span class="badge ${p.type==='Femme'?'bg-k':'bg-b'}">${esc(p.type)}</span></td><td>${esc(p.quota)}</td>
+    <td style="font-weight:600">${esc(p.reel)}</td><td>${p.type==='Femme'?Math.floor(p.reel/50):'—'}</td><td style="color:${ec>=0?'var(--green)':'var(--red)'}">${ec>=0?'+':''}${ec}</td>
+    <td style="font-weight:600;color:var(--accent)">${fmt(p.paie)}</td>
+    <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cette production?','productions',D.productions.find(x=>x.id===${p.id}))"><i class="ti ti-trash"></i></button></td></tr>`;
+  }).join(''):'<tr><td colspan="10" class="empty">Aucune production cette semaine</td></tr>'}</tbody></table></div>`;
+}
+
+function montantsHTML() {
+  const items=[...D.montants].sort((a,b)=>b.date.localeCompare(a.date));
+  return `<h1>💰 Montants reçus</h1><p class="desc">Total: ${fmt(D.montants.reduce((s,m)=>s+m.montant,0))}</p>
+  <div class="toolbar"><button class="btn btn-p" onclick="montantForm()">+ Ajouter</button></div>
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Client</th><th>Montant</th><th></th></tr></thead>
+  <tbody>${items.length?items.map(m=>`<tr><td>${esc(m.date)}</td><td>${esc(m.desc||'—')}</td>
+  <td><span class="badge ${m.type==='Vente'?'bg-g':m.type==='Dette reçue'?'bg-b':'bg-n'}">${esc(m.type)}</span></td>
+  <td>${esc(m.client||'—')}</td><td style="font-weight:600;color:var(--green)">${fmt(m.montant)}</td>
+  <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce montant?','montants',D.montants.find(x=>x.id===${m.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="6" class="empty">Aucun montant</td></tr>'}</tbody></table></div>`;
+}
+
+function depensesHTML() {
+  const items=[...D.depenses].sort((a,b)=>b.date.localeCompare(a.date));
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const tot=D.depenses.reduce((s,d)=>s+d.montant,0);
+  return `<h1>💸 Dépenses</h1><p class="desc">Total: ${fmt(tot)}</p>
+  <div class="toolbar"><button class="btn btn-p" onclick="depForm()">+ Ajouter</button></div>
+  ${Object.keys(byCat).length?`<div class="card mb-12"><h2>📊 Répartition</h2>${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
+    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span>${esc(k)}</span><span style="font-weight:600;color:var(--red)">${fmt(v)}</span></div>`).join('')}</div>`:''}
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Catégorie</th><th>Détail</th><th>Montant</th><th></th></tr></thead>
+  <tbody>${items.length?items.map(d=>`<tr><td>${esc(d.date)}</td>
+  <td><span class="badge ${d.categorie==='Électricité'||d.categorie==='Eau'?'bg-b':d.categorie.includes('Salaire')?'bg-p':d.categorie.includes('Réparation')?'bg-r':d.categorie.includes('Essence')?'bg-y':d.categorie==='Matière première'?'bg-g':d.categorie==='Emballage'?'bg-b':'bg-n'}">${esc(d.categorie)}</span></td>
+  <td>${esc(d.detail||'')}${d.employe?`<br><span class="fs">${esc(d.employe)}</span>`:''}</td>
+  <td style="font-weight:600;color:var(--red)">${fmt(d.montant)}</td>
+  <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cette dépense?','depenses',D.depenses.find(x=>x.id===${d.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="5" class="empty">Aucune dépense</td></tr>'}</tbody></table></div>`;
+}
+
+function stockHTML() {
+  const cur={}; STK.forEach(c=>cur[c]=0);
+  D.stockE.forEach(e=>{cur[e.categorie]=(cur[e.categorie]||0)+e.qte;});
+  D.stockS.forEach(s=>{cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
+  return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées et sorties</p>
+  <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button></div>
+  <div class="grid" style="grid-template-columns:repeat(4,1fr)">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
+    <div class="big" style="font-size:20px;color:${(cur[c]||0)>=0?'var(--green)':'var(--red)'}">${cur[c]||0}</div>
+    <div class="lbl" style="font-size:10px">${c}</div></div>`).join('')}</div>
+  <div class="card mb-12"><h2>📥 Entrées</h2><div class="table-wrap">${makeStockTable(D.stockE,'E')}</div></div>
+  <div class="card"><h2>📤 Sorties</h2><div class="table-wrap">${makeStockTable(D.stockS,'S')}</div></div>`;
+}
+
+function makeStockTable(list,type) {
+  const items=[...list].sort((a,b)=>b.date.localeCompare(a.date));
+  if(!items.length)return'<div class="empty">Aucune</div>';
+  return `<table><thead><tr><th>Date</th><th>Catégorie</th><th>Quantité</th>${type==='E'?'<th>Coût</th>':''}<th>Description</th><th></th></tr></thead>
+  <tbody>${items.map(i=>`<tr><td>${esc(i.date)}</td><td>${esc(i.categorie)}</td><td>${esc(i.qte)} ${esc(i.unite||'')}</td>${type==='E'?`<td>${fmt(i.cout||0)}</td>`:''}<td>${esc(i.desc||'')}</td>
+  <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer?','stock${type==='E'?'E':'S'}',D.stock${type==='E'?'E':'S'}.find(x=>x.id===${i.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table>`;
+}
+
+function financesHTML() {
+  const totR=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
+  const bilan=totR-totD, dettes=D.clients.reduce((s,c)=>s+(c.detteCur||0),0);
+  const byType={}; D.montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  return `<h1>📈 Finances</h1><p class="desc">Bilan financier global</p>
+  <div class="grid">
+    <div class="card accent"><div class="big">${fmt(totR)}</div><div class="lbl">Revenus</div></div>
+    <div class="card"><div class="big" style="color:var(--red)">${fmt(totD)}</div><div class="lbl">Dépenses</div></div>
+    <div class="card"><div class="big" style="color:${bilan>=0?'var(--green)':'var(--red)'}">${fmt(bilan)}</div><div class="lbl">Résultat net</div></div>
+    <div class="card"><div class="big" style="color:var(--red)">${fmt(dettes)}</div><div class="lbl">Dettes clients</div></div>
+  </div>
+  <div class="card mb-12"><h2>💰 Revenus par type</h2>${Object.keys(byType).length?Object.entries(byType).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${esc(k)}</span><span style="font-weight:600;color:var(--green)">${fmt(v)}</span></div>`).join(''):'<div class="empty">Aucun revenu</div>'}</div>
+  <div class="card mb-12"><h2>💸 Dépenses par catégorie</h2>${Object.keys(byCat).length?Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${esc(k)}</span><span style="font-weight:600;color:var(--red)">${fmt(v)}</span></div>`).join(''):'<div class="empty">Aucune dépense</div>'}</div>
+  <div class="card"><h2>👥 Dettes clients</h2>${D.clients.filter(c=>(c.detteCur||0)>0).length?[...D.clients].filter(c=>(c.detteCur||0)>0).sort((a,b)=>(b.detteCur||0)-(a.detteCur||0)).map(c=>{
+    const pct=c.detteInit?Math.round(((c.detteInit-(c.detteCur||0))/c.detteInit)*100):0;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
+      <span><strong>${esc(c.name)}</strong></span><span style="color:var(--red)">${fmt(c.detteCur)}</span>
+      <div class="prog" style="width:80px"><div class="prog-f" style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--amber)'}"></div></div><span>${pct}%</span></div>`;
+  }).join(''):'<div class="empty">Aucune dette</div>'}</div>`;
+}
+
+function analysesHTML() {
+  const totR=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
+  const bilan=totR-totD, marge=totR?Math.round((totR-totD)/totR*100):0;
+  const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
+  const wk=D.productions.filter(p=>new Date(p.date)>=weekAgo&&p.type==='Femme');
+  const byDay={}; wk.forEach(p=>{const b=Math.floor(p.reel/50);byDay[p.date]=(byDay[p.date]||0)+b;});
+  const recos=[];
+  if(totD>totR)recos.push('🔴 Dépenses > Revenus. Réduisez les coûts.');
+  if(D.clients.some(c=>(c.detteCur||0)>0))recos.push('🟡 Relancez les clients avec dettes impayées.');
+  if(totR>0&&totD/totR>0.8)recos.push('🟡 Ratio dépenses/revenus élevé (>80%). Optimisez.');
+  if(D.productions.length===0)recos.push('🟡 Aucune production enregistrée.');
+  if(!recos.length)recos.push('✅ Bonne gestion !');
+  return `<h1>🧠 Analyses PME</h1><p class="desc">Indicateurs de performance</p>
+  <div class="grid">
+    <div class="card accent"><div class="big">${fmt(bilan)}</div><div class="lbl">Résultat net</div></div>
+    <div class="card"><div class="big" style="color:${marge>=0?'var(--green)':'var(--red)'}">${marge}%</div><div class="lbl">Marge nette</div></div>
+    <div class="card"><div class="big">${D.productions.length}</div><div class="lbl">Productions</div></div>
+    <div class="card"><div class="big">${D.employes.length}</div><div class="lbl">Effectif</div></div>
+  </div>
+  <div class="card mb-12"><h2>🏭 Production (7 jours)</h2>${Object.keys(byDay).length?Object.keys(byDay).sort().map(d=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${esc(d)}</span><span style="font-weight:600">${esc(byDay[d])} balles</span></div>`).join(''):'<div class="empty">Aucune donnée</div>'}</div>
+  <div class="card"><h2>💡 Recommandations</h2>${recos.map(r=>`<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px">${r}</div>`).join('')}</div>`;
+}
+
+function employesHTML() {
+  const empData = D.employes.map(e=>{
+    const paie=D.productions.reduce((s,p)=>prodEmps(p).includes(e.name)?s+(p.type==='Femme'?Math.round(p.paie/prodEmps(p).length):p.paie):s,0);
+    const retire=D.retraits.filter(r=>r.employe===e.name).reduce((s,r)=>s+r.montant,0);
+    return {...e,paie,retire,solde:paie-retire};
+  });
+  const retraits=[...D.retraits].sort((a,b)=>b.date.localeCompare(a.date));
+  return `<h1>👷 Employés</h1><p class="desc">Registre et suivi des paies</p>
+  <div class="toolbar"><button class="btn btn-p" onclick="empForm()">+ Ajouter</button></div>
+  <div class="table-wrap mb-12"><table><thead><tr><th>Nom</th><th>Type</th><th>💰 Paie gagnée</th><th>↩️ Retiré</th><th>🏦 Solde</th><th>Actions</th></tr></thead>
+  <tbody>${empData.length?empData.map(e=>`<tr><td><strong>${esc(e.name)}</strong></td>
+  <td><span class="badge ${e.type==='Femme'?'bg-k':e.type==='Homme'?'bg-b':'bg-n'}">${e.type}</span></td>
+  <td style="font-weight:600;color:var(--accent)">${fmt(e.paie)}</td><td>${fmt(e.retire)}</td>
+  <td style="font-weight:600;color:${e.solde>0?'var(--green)':'var(--text3)'}">${fmt(e.solde)}</td>
+  <td class="gap-4"><button class="btn btn-sm btn-gh" onclick="empForm(D.employes.find(x=>x.id===${e.id}))"><i class="ti ti-pencil"></i></button>
+  <button class="btn btn-sm btn-g" onclick="retraitForm(${e.id})"><i class="ti ti-cash"></i></button>
+  <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cet employé?','employes',D.employes.find(x=>x.id===${e.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="6" class="empty">Aucun employé</td></tr>'}</tbody></table></div>
+  <div class="card"><h2>📋 Retraits caisse</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Employé</th><th>Montant</th><th>Notes</th><th></th></tr></thead>
+  <tbody>${retraits.length?retraits.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.employe)}</td><td style="font-weight:600">${fmt(r.montant)}</td><td>${esc(r.notes||'')}</td>
+  <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce retrait?','retraits',D.retraits.find(x=>x.id===${r.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="5" class="empty">Aucun retrait</td></tr>'}</tbody></table></div></div>`;
+}
+
+function exporterHTML() {
+  return `<h1>📥 Exporter</h1><p class="desc">Téléchargez toutes vos données</p>
+  <button class="btn btn-p" onclick="exportData()"><i class="ti ti-download"></i> Exporter JSON</button>
+  <div class="card mt-12"><h2>Aperçu</h2><pre style="font-size:11px;max-height:300px;overflow:auto;background:var(--bg);padding:10px;border-radius:8px">${JSON.stringify(D,null,2).slice(0,2000)}...</pre></div>`;
+}
+
+function corbeilleHTML() {
+  const items=[...D.trash].sort((a,b)=>b.deletedAt-a.deletedAt);
+  const S=7*86400000;
+  return `<h1>🗑️ Corbeille</h1><p class="desc">Rétention 7 jours avant suppression définitive</p>
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Suppression dans</th><th>Actions</th></tr></thead>
+  <tbody>${items.length?items.map(t=>{const r=Math.max(0,S-(Date.now()-t.deletedAt));const j=Math.ceil(r/86400000);const nm=t.content.name||t.content.client||t.content.desc||t.content.detail||t.content.produit||'(?)';
+  return `<tr><td>${new Date(t.deletedAt).toLocaleDateString('fr-FR')}</td><td><span class="badge bg-n">${t.type}</span></td>
+  <td>${esc(nm).slice(0,40)}</td><td>${j}j</td>
+  <td class="gap-4"><button class="btn btn-sm btn-g" onclick="restoreT(${t.id})">Restaurer</button>
+  <button class="btn btn-sm btn-r" onclick="D.trash=D.trash.filter(x=>x.id!==${t.id});save();render()">Effacer</button></td></tr>`;}).join(''):'<tr><td colspan="5" class="empty">Corbeille vide</td></tr>'}</tbody></table></div>
+  <p class="fs mt-8"><i class="ti ti-info-circle"></i> Les éléments sont automatiquement supprimés après 7 jours.</p>`;
+}
+
+// ─── INIT ───
+load(); renderTabs();
+document.getElementById('p-dash').innerHTML = dashHTML();
+document.getElementById('p-clients').innerHTML = clientsHTML();
+document.getElementById('p-commandes').innerHTML = commandesHTML();
+document.getElementById('p-prod').innerHTML = prodHTML();
+document.getElementById('p-montants').innerHTML = montantsHTML();
+document.getElementById('p-depenses').innerHTML = depensesHTML();
+document.getElementById('p-stock').innerHTML = stockHTML();
+document.getElementById('p-finances').innerHTML = financesHTML();
+document.getElementById('p-analyses').innerHTML = analysesHTML();
+document.getElementById('p-employes').innerHTML = employesHTML();
+document.getElementById('p-exporter').innerHTML = exporterHTML();
+document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
+dashCharts();
