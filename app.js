@@ -534,6 +534,34 @@ function exportData() {
   const b=new Blob([JSON.stringify(D,null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='chips-data.json';a.click();
 }
+function exportToExcel(section) {
+  if(typeof XLSX==='undefined')return alert('Bibliothèque Excel non chargée');
+  const wb=XLSX.utils.book_new();
+  const map={
+    clients:{data:D.clients,h:['Nom','Téléphone','Adresse','Dette initiale','Dette actuelle'],f:c=>[c.name,c.phone||'',c.addr||'',c.detteInit||0,c.detteCur||0]},
+    commandes:{data:D.commandes,h:['Client','Date','Produit','Quantité','Prix total','Payé','Reste','Statut'],f:c=>[c.client,c.date,c.produit,c.qte,c.prixTotal,c.paye,c.reste,c.statut]},
+    productions:{data:D.productions,h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,Math.floor(p.reel/50)]},
+    montants:{data:D.montants,h:['Date','Description','Type','Client','Montant'],f:m=>[m.date,m.desc,m.type,m.client||'',m.montant]},
+    depenses:{data:D.depenses,h:['Date','Catégorie','Montant','Détail','Employé'],f:d=>[d.date,d.categorie,d.montant,d.detail||'',d.employe||'']},
+    retraits:{data:D.retraits,h:['Date','Employé','Montant','Notes'],f:r=>[r.date,r.employe,r.montant,r.notes||'']},
+    stockE:{data:D.stockE,h:['Date','Catégorie','Quantité','Unité','Coût','Description'],f:s=>[s.date,s.categorie,s.qte,s.unite||'',s.cout||0,s.desc||'']},
+    stockS:{data:D.stockS,h:['Date','Catégorie','Quantité','Unité','Description'],f:s=>[s.date,s.categorie,s.qte,s.unite||'',s.desc||'']},
+    employes:{data:D.employes,h:['Nom','Type','Téléphone','Date embauche','Notes'],f:e=>[e.name,e.type,e.phone||'',e.dateEmbauche||'',e.notes||'']},
+  };
+  if(section==='all'){
+    for(const [key,{data,h,f}] of Object.entries(map)){
+      const rows=[h,...data.map(f)];
+      const ws=XLSX.utils.aoa_to_sheet(rows);
+      XLSX.utils.book_append_sheet(wb,ws,key.charAt(0).toUpperCase()+key.slice(1).replace('E',' (Entrées)').replace('S',' (Sorties)'));
+    }
+  } else {
+    const {data,h,f}=map[section]||{data:[],h:[],f:()=>[]};
+    const rows=[h,...data.map(f)];
+    const ws=XLSX.utils.aoa_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb,ws,'Données');
+  }
+  XLSX.writeFile(wb,section==='all'?'chips_complet.xlsx':`chips_${section}.xlsx`);
+}
 
 // ─── RENDER ───
 function render() {
@@ -823,8 +851,22 @@ function employesHTML() {
 }
 
 function exporterHTML() {
-  return `<h1>📥 Exporter</h1><p class="desc">Téléchargez toutes vos données</p>
-  <button class="btn btn-p" onclick="exportData()"><i class="ti ti-download"></i> Exporter JSON</button>
+  const sections=[
+    ['all','📦 Tout le classeur','btn-p'],
+    ['clients','👥 Clients','btn-g'],
+    ['commandes','🛒 Commandes','btn-g'],
+    ['productions','🏭 Productions','btn-g'],
+    ['montants','💰 Montants','btn-g'],
+    ['depenses','💸 Dépenses','btn-g'],
+    ['employes','👷 Employés','btn-g'],
+    ['retraits','↩️ Retraits','btn-g'],
+    ['stockE','📥 Entrées stock','btn-g'],
+    ['stockS','📤 Sorties stock','btn-g'],
+  ];
+  return `<h1>📥 Exporter</h1><p class="desc">Téléchargez vos données en Excel (.xlsx)</p>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:1rem">${sections.map(([k,label,cls])=>`<button class="btn ${cls}" onclick="exportToExcel('${k}')" style="justify-content:center;padding:.8rem">${label}</button>`).join('')}</div>
+  <div class="card"><h2>📋 Export JSON (sauvegarde brute)</h2><p class="desc">Pour restauration future</p>
+  <button class="btn btn-p" onclick="exportData()"><i class="ti ti-download"></i> Exporter JSON</button></div>
   <div class="card mt-12"><h2>Aperçu</h2><pre style="font-size:11px;max-height:300px;overflow:auto;background:var(--bg);padding:10px;border-radius:8px">${JSON.stringify(D,null,2).slice(0,2000)}...</pre></div>`;
 }
 
