@@ -9,6 +9,13 @@ let D = { clients:[], commandes:[], productions:[], montants:[], depenses:[], st
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
+let theme = localStorage.getItem('chips_theme')||'light';
+function toggleTheme() {
+  theme = theme==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',theme);
+  localStorage.setItem('chips_theme',theme);
+  document.getElementById('themeBtn').innerHTML = theme==='dark'?'☀️ Clair':'🌙 Sombre';
+}
 
 function setFilter(preset) {
   const now = new Date(), t = today();
@@ -772,6 +779,8 @@ function corbeilleHTML() {
 renderTabs();
 loadSB().then(()=>{
   recalcDebts();save();
+  document.documentElement.setAttribute('data-theme',theme);
+  document.getElementById('themeBtn').innerHTML = theme==='dark'?'☀️ Clair':'🌙 Sombre';
   document.getElementById('filterInfo').textContent = 'Toute période';
   document.getElementById('p-dash').innerHTML = dashHTML();
   document.getElementById('p-clients').innerHTML = clientsHTML();
