@@ -1,45 +1,103 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Chips Gestion Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#f5f4f0;--surface:#fff;--text:#1c1c1a;--text2:#6b6b66;--text3:#ababa6;--border:#e6e4de;--accent:#3b3bfa;--accent2:#6366f1;--radius:10px;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--shadow:0 1px 3px rgba(0,0,0,.05)}
+body{font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+.tabs{display:flex;flex-wrap:wrap;gap:1px;background:var(--surface);border-bottom:1px solid var(--border);padding:0 .75rem;position:sticky;top:0;z-index:20;overflow-x:auto}
+.tabs a{padding:9px 12px;font-size:11.5px;font-weight:500;color:var(--text3);text-decoration:none;cursor:pointer;border-bottom:2px solid transparent;transition:all .13s;white-space:nowrap;display:flex;align-items:center;gap:4px;letter-spacing:.1px}
+.tabs a:hover{color:var(--text);background:rgba(0,0,0,.015)}
+.tabs a.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.page{display:none;padding:1rem 1.25rem;max-width:860px;margin:auto}
+.page.active{display:block}
+h1{font-size:17px;font-weight:700;margin-bottom:3px;letter-spacing:-.2px}
+h2{font-size:13.5px;font-weight:600;margin-bottom:8px;letter-spacing:-.1px}
+.desc{font-size:12px;color:var(--text3);margin-bottom:.85rem}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:.85rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem;box-shadow:var(--shadow)}
+.card .big{font-size:21px;font-weight:700;letter-spacing:-.3px}
+.card .lbl{font-size:10px;color:var(--text2);text-transform:uppercase;letter-spacing:.3px;margin-top:2px;font-weight:600}
+.card.accent{background:linear-gradient(135deg,var(--accent),var(--accent2));border-color:transparent;color:#fff}
+.card.accent .lbl{color:rgba(255,255,255,.65)}
+.table-wrap{overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius)}
+table{width:100%;border-collapse:collapse;font-size:12.5px;min-width:500px}
+th{background:#f8f8f5;padding:7px 9px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border)}
+td{padding:7px 9px;border-bottom:1px solid var(--border)}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#fafaf7}
+.btn{display:inline-flex;align-items:center;gap:4px;padding:6px 12px;border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer;border:none;font-family:inherit;transition:all .12s}
+.btn-p{background:var(--accent);color:#fff}.btn-p:hover{background:var(--accent2)}
+.btn-g{background:var(--green);color:#fff}.btn-g:hover{background:#16a34a}
+.btn-r{background:var(--red);color:#fff}.btn-r:hover{background:#dc2626}
+.btn-o{background:transparent;border:1px solid var(--border);color:var(--text2)}.btn-o:hover{border-color:var(--accent);color:var(--accent)}
+.btn-gh{background:transparent;color:var(--text2);padding:4px 7px;border-radius:6px}.btn-gh:hover{background:#f0efeb}
+.btn-sm{padding:3px 8px;font-size:10.5px;border-radius:5px}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.toolbar .spacer{flex:1}
+.badge{display:inline-block;font-size:9.5px;padding:2px 7px;border-radius:8px;font-weight:600;letter-spacing:.1px}
+.bg-g{background:#dcfce7;color:#166534}.bg-b{background:#dbeafe;color:#1e40af}.bg-y{background:#fef3c7;color:#92400e}.bg-p{background:#ede9fe;color:#5b21b6}.bg-k{background:#fce7f3;color:#9d174d}.bg-r{background:#fee2e2;color:#991b1b}.bg-n{background:#f0efeb;color:#6b6b66}
+.prog{height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.prog-f{height:100%;background:linear-gradient(90deg,var(--accent),#a78bfa);border-radius:2px;transition:width .4s}
+.empty{padding:1.5rem;text-align:center;color:var(--text3);font-size:12px}
+.m-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.3);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:1rem}
+.m-overlay.o{display:flex}
+.m-body{background:var(--surface);border-radius:14px;padding:1.25rem;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+.m-body h3{font-size:14px;font-weight:700;margin-bottom:.85rem;display:flex;align-items:center;gap:7px}
+.m-body label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:2px;margin-top:1px}
+.m-body input,.m-body select,.m-body textarea{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;outline:none;margin-bottom:8px;font-family:inherit;background:var(--bg);color:var(--text);transition:border-color .15s}
+.m-body input:focus,.m-body select:focus,.m-body textarea:focus{border-color:var(--accent)}
+.m-body textarea{resize:vertical;min-height:36px}
+.m-actions{display:flex;gap:7px;justify-content:flex-end;margin-top:4px;flex-wrap:wrap}
+.m-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.calc{background:var(--bg);border-radius:7px;padding:8px 10px;margin-bottom:8px;font-size:12px;line-height:1.7}
+.calc .r{display:flex;justify-content:space-between}
+.calc .v{font-weight:700}
+.week-nav{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.week-nav button{padding:4px 10px;border-radius:6px;font-size:11px;border:1px solid var(--border);background:var(--surface);cursor:pointer;color:var(--text2);font-family:inherit;font-weight:500;transition:all .12s}
+.week-nav button:hover{border-color:var(--accent);color:var(--accent)}
+.week-nav .wn-label{font-size:12px;font-weight:600}
+.week-nav .wn-sub{font-size:10.5px;color:var(--text3)}
+@media(max-width:600px){.tabs a{padding:8px 10px;font-size:11px}.page{padding:1rem}.m-row{grid-template-columns:1fr}}
+.sp{flex:1}
+.mt-8{margin-top:6px}.mt-12{margin-top:10px}.mb-12{margin-bottom:10px}
+.gap-4{display:flex;gap:4px}.gap-8{display:flex;gap:8px}.wrap{flex-wrap:wrap}.aic{align-items:center}
+.tc{text-align:center}.fs{font-size:11px;color:var(--text3)}
+@media(max-width:600px){.tabs a{padding:7px 8px;font-size:10.5px}.page{padding:.75rem}.m-row{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
 
+<div class="tabs" id="tabs"></div>
+
+<div class="page active" id="p-dash"></div>
+<div class="page" id="p-clients"></div>
+<div class="page" id="p-commandes"></div>
+<div class="page" id="p-prod"></div>
+<div class="page" id="p-montants"></div>
+<div class="page" id="p-depenses"></div>
+<div class="page" id="p-stock"></div>
+<div class="page" id="p-finances"></div>
+<div class="page" id="p-analyses"></div>
+<div class="page" id="p-employes"></div>
+<div class="page" id="p-exporter"></div>
+<div class="page" id="p-corbeille"></div>
+
+<div class="m-overlay" id="modal"><div class="m-body" id="modalBody"></div></div>
+
+<script>
 // ─── STATE ───
 const K = 'chips_pro';
-const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
-const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
-let SB = null;
-try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
 let D = { clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
-let filterRange = { start: '', end: '' };
-
-function setFilter(preset) {
-  const now = new Date(), t = today();
-  switch(preset) {
-    case 'today': filterRange = { start: t, end: t }; break;
-    case 'week': {
-      const ws = new Date(now);
-      ws.setDate(now.getDate() - (now.getDay()||7));
-      filterRange = { start: ws.toISOString().slice(0,10), end: t };
-      break;
-    }
-    case 'month': filterRange = { start: t.slice(0,7)+'-01', end: t }; break;
-    case 'year': filterRange = { start: t.slice(0,4)+'-01-01', end: t }; break;
-    case 'all': filterRange = { start: '', end: '' }; break;
-    case 'custom':
-      filterRange = { start: document.getElementById('fStart')?.value||'', end: document.getElementById('fEnd')?.value||'' };
-      break;
-  }
-  document.getElementById('fPreset').value = preset;
-  const info = document.getElementById('filterInfo');
-  if(info){
-    if(!filterRange.start&&!filterRange.end) info.textContent = 'Toute période';
-    else if(filterRange.start===filterRange.end) info.textContent = filterRange.start;
-    else info.textContent = filterRange.start+' → '+filterRange.end;
-  }
-  render();
-}
-function inRange(dateStr) {
-  if(!filterRange.start&&!filterRange.end) return true;
-  return (!filterRange.start||dateStr>=filterRange.start)&&(!filterRange.end||dateStr<=filterRange.end);
-}
 
 function load() {
   try {
@@ -50,22 +108,7 @@ function load() {
     }
   } catch(_) {}
 }
-async function loadSB() {
-  if(!SB)return load();
-  try {
-    const {data,error} = await SB.from('app_state').select('data').eq('id',1).single();
-    if(error||!data||!data.data||!Object.keys(data.data).length){load();return;}
-    D = data.data;
-    if(!D.clients) Object.assign(D,{clients:[],commandes:[],productions:[],montants:[],depenses:[],stockE:[],stockS:[],employes:[],retraits:[],trash:[]});
-    const all = [].concat(...['clients','commandes','productions','montants','depenses','stockE','stockS','employes','retraits','trash'].map(k=>D[k]||[]));
-    nextId = all.reduce((m,x)=>Math.max(m,x.id||0),0)+1;
-  } catch(_){load()}
-}
-function save() {
-  recalcDebts();
-  localStorage.setItem(K,JSON.stringify(D));
-  if(SB) SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then().catch(()=>{});
-}
+function save() { localStorage.setItem(K,JSON.stringify(D)); }
 function today() { return new Date().toISOString().slice(0,10); }
 function fmt(n) { return (n||0).toLocaleString('fr-FR')+' FCFA'; }
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
@@ -100,7 +143,7 @@ function val(id) { return document.getElementById(id)?.value||''; }
 function num(id) { return +document.getElementById(id)?.value||0; }
 
 // ─── TRASH ───
-function trashIt(type,item,motif) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now(),motif:motif||''}); }
+function trashIt(type,item) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now()}); }
 function cleanTrash() { const S=7*86400000; const b=D.trash.length; D.trash=D.trash.filter(t=>Date.now()-t.deletedAt<S); if(D.trash.length!==b)save(); }
 function restoreT(id) { const t=D.trash.find(x=>x.id===id); if(!t)return; D[t.type].push(t.content); D.trash=D.trash.filter(x=>x.id!==id); save(); render(); }
 
@@ -146,27 +189,14 @@ function payerDette(id) {
 }
 
 function confirmDel(msg,type,item) {
-  const n=item.name||item.client||item.desc||item.detail||item.produit||'(?)';
-  openM(`
-    <h3>🗑️ Supprimer</h3>
-    <p>${msg}</p>
-    <p class="fs"><strong>${esc(n)}</strong></p>
-    <label>Motif de suppression</label>
-    <textarea id="delMotif" rows="3" placeholder="Raison..." style="width:100%"></textarea>
-    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
-    <button class="btn btn-r" onclick="execDel('${type}',${item.id})">Supprimer</button></div>
-  `);
-}
-function execDel(type,id) {
-  const item=D[type].find(x=>x.id===id); if(!item)return;
-  const motif=val('delMotif').trim();
+  if(!confirm(msg))return;
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
   }
-  trashIt(type,item,motif);
-  D[type]=D[type].filter(x=>x.id!==id);
-  closeM();save();render();
+  trashIt(type,item);
+  D[type]=D[type].filter(x=>x.id!==item.id);
+  save();render();
 }
 
 // ─── COMMANDE ───
@@ -325,20 +355,9 @@ function montantForm(m) {
 
 function saveMontant(id) {
   const mt=num('mMt'); if(!mt)return alert('Montant requis');
-  const type=val('mType'), client=val('mClient');
-  if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=type;m.client=client;}}
-  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client});
+  if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=val('mType');m.client=val('mClient');}}
+  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type:val('mType'),client:val('mClient')});
   closeM();save();render();
-}
-function recalcDebts() {
-  for(const c of D.clients){
-    let debt=c.detteInit||0;
-    for(const cmd of D.commandes.filter(x=>x.client===c.name))
-      debt+=cmd.reste;
-    for(const mt of D.montants.filter(x=>x.client===c.name&&x.type==='Dette reçue'))
-      debt-=mt.montant;
-    c.detteCur=Math.max(0,debt);
-  }
 }
 
 // ─── DÉPENSE ───
@@ -490,15 +509,13 @@ function render() {
 }
 
 function dashHTML() {
-  const montants=D.montants.filter(m=>inRange(m.date)), depenses=D.depenses.filter(d=>inRange(d.date));
-  const prodsAll=D.productions.filter(p=>inRange(p.date));
-  const totM=montants.reduce((s,m)=>s+m.montant,0), totD=depenses.reduce((s,d)=>s+d.montant,0);
+  const totM=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
   const bilan=totM-totD;
-  const totalSachets=prodsAll.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0);
+  const totalSachets=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0);
   const totalBalles=Math.floor(totalSachets/50);
-  const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
-  const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
-  const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
+  const prods=[...D.productions].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const byType={}; D.montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
 
   const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
   const wkProds=D.productions.filter(p=>new Date(p.date)>=weekAgo&&p.type==='Femme');
@@ -506,10 +523,10 @@ function dashHTML() {
 
   return `<h1>📊 Tableau de Bord</h1><p class="desc">Vue d'ensemble</p>
   <div class="grid">
-    <div class="card accent"><div class="big">${totalBalles}</div><div class="lbl">🏀 Balles (période)</div></div>
+    <div class="card accent"><div class="big">${totalBalles}</div><div class="lbl">🏀 Balles total</div></div>
     <div class="card"><div class="big">${D.clients.length}</div><div class="lbl">👥 Clients</div></div>
-    <div class="card"><div class="big" style="color:var(--green)">${fmt(totM)}</div><div class="lbl">💰 Reçus (période)</div></div>
-    <div class="card"><div class="big" style="color:var(--red)">${fmt(totD)}</div><div class="lbl">💸 Dépenses (période)</div></div>
+    <div class="card"><div class="big" style="color:var(--green)">${fmt(totM)}</div><div class="lbl">💰 Reçus</div></div>
+    <div class="card"><div class="big" style="color:var(--red)">${fmt(totD)}</div><div class="lbl">💸 Dépenses</div></div>
   </div>
   <div class="grid" style="grid-template-columns:1fr 1fr">
     <div class="card"><canvas id="chartFin" height="180"></canvas></div>
@@ -530,9 +547,8 @@ function dashHTML() {
 }
 
 function dashCharts() {
-  const montants=D.montants.filter(m=>inRange(m.date)), depenses=D.depenses.filter(d=>inRange(d.date));
-  const totM=montants.reduce((s,m)=>s+m.montant,0), totD=depenses.reduce((s,d)=>s+d.montant,0);
-  const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const totM=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   const catE=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(0,6);
   const catO=Object.entries(byCat).sort((a,b)=>b[1]-a[1]).slice(6).reduce((s,[,v])=>s+v,0);
 
@@ -566,11 +582,10 @@ function clientsHTML() {
 }
 
 function commandesHTML() {
-  const cmdList=D.commandes.filter(c=>inRange(c.date));
-  return `<h1>🛒 Commandes</h1><p class="desc">Suivi des commandes clients. ${!filterRange.start&&!filterRange.end?'':cmdList.length+' sur la période'}</p>
+  return `<h1>🛒 Commandes</h1><p class="desc">Suivi des commandes clients</p>
   <div class="toolbar"><button class="btn btn-p" onclick="commandeForm()">+ Nouvelle</button></div>
   <div class="table-wrap"><table><thead><tr><th>Client</th><th>Produit</th><th>Qté</th><th>Total</th><th>✅ Payé</th><th>⏳ Reste</th><th>Statut</th><th>Actions</th></tr></thead>
-  <tbody>${cmdList.length?[...cmdList].sort((a,b)=>b.date.localeCompare(a.date)).map(c=>{
+  <tbody>${D.commandes.length?[...D.commandes].sort((a,b)=>b.date.localeCompare(a.date)).map(c=>{
     const r=c.prixTotal-c.paye;
     return `<tr><td>${esc(c.client)}<br><span class="fs">${esc(c.date)}</span></td><td>${esc(c.produit)}</td><td>${esc(c.qte)}</td>
     <td><strong>${fmt(c.prixTotal)}</strong></td><td style="color:var(--green)">${fmt(c.paye)}</td>
@@ -629,22 +644,20 @@ function prodHTML() {
 }
 
 function montantsHTML() {
-  const mList=D.montants.filter(m=>inRange(m.date));
-  const items=[...mList].sort((a,b)=>b.date.localeCompare(a.date));
-  return `<h1>💰 Montants reçus</h1><p class="desc">Total: ${fmt(mList.reduce((s,m)=>s+m.montant,0))}</p>
+  const items=[...D.montants].sort((a,b)=>b.date.localeCompare(a.date));
+  return `<h1>💰 Montants reçus</h1><p class="desc">Total: ${fmt(D.montants.reduce((s,m)=>s+m.montant,0))}</p>
   <div class="toolbar"><button class="btn btn-p" onclick="montantForm()">+ Ajouter</button></div>
   <div class="table-wrap"><table><thead><tr><th>Date</th><th>Description</th><th>Type</th><th>Client</th><th>Montant</th><th></th></tr></thead>
   <tbody>${items.length?items.map(m=>`<tr><td>${esc(m.date)}</td><td>${esc(m.desc||'—')}</td>
   <td><span class="badge ${m.type==='Vente'?'bg-g':m.type==='Dette reçue'?'bg-b':'bg-n'}">${esc(m.type)}</span></td>
   <td>${esc(m.client||'—')}</td><td style="font-weight:600;color:var(--green)">${fmt(m.montant)}</td>
-  <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce montant?','montants',D.montants.find(x=>x.id===${m.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="6" class="empty">Aucun montant sur cette période</td></tr>'}</tbody></table></div>`;
+  <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce montant?','montants',D.montants.find(x=>x.id===${m.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="6" class="empty">Aucun montant</td></tr>'}</tbody></table></div>`;
 }
 
 function depensesHTML() {
-  const dList=D.depenses.filter(d=>inRange(d.date));
-  const items=[...dList].sort((a,b)=>b.date.localeCompare(a.date));
-  const byCat={}; dList.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
-  const tot=dList.reduce((s,d)=>s+d.montant,0);
+  const items=[...D.depenses].sort((a,b)=>b.date.localeCompare(a.date));
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const tot=D.depenses.reduce((s,d)=>s+d.montant,0);
   return `<h1>💸 Dépenses</h1><p class="desc">Total: ${fmt(tot)}</p>
   <div class="toolbar"><button class="btn btn-p" onclick="depForm()">+ Ajouter</button></div>
   ${Object.keys(byCat).length?`<div class="card mb-12"><h2>📊 Répartition</h2>${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`
@@ -680,11 +693,10 @@ function makeStockTable(list,type) {
 }
 
 function financesHTML() {
-  const montants=D.montants.filter(m=>inRange(m.date)), depenses=D.depenses.filter(d=>inRange(d.date));
-  const totR=montants.reduce((s,m)=>s+m.montant,0), totD=depenses.reduce((s,d)=>s+d.montant,0);
+  const totR=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
   const bilan=totR-totD, dettes=D.clients.reduce((s,c)=>s+(c.detteCur||0),0);
-  const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
-  const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
+  const byType={}; D.montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
+  const byCat={}; D.depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   return `<h1>📈 Finances</h1><p class="desc">Bilan financier global</p>
   <div class="grid">
     <div class="card accent"><div class="big">${fmt(totR)}</div><div class="lbl">Revenus</div></div>
@@ -703,9 +715,7 @@ function financesHTML() {
 }
 
 function analysesHTML() {
-  const montants=D.montants.filter(m=>inRange(m.date)), depenses=D.depenses.filter(d=>inRange(d.date));
-  const prods=D.productions.filter(p=>inRange(p.date));
-  const totR=montants.reduce((s,m)=>s+m.montant,0), totD=depenses.reduce((s,d)=>s+d.montant,0);
+  const totR=D.montants.reduce((s,m)=>s+m.montant,0), totD=D.depenses.reduce((s,d)=>s+d.montant,0);
   const bilan=totR-totD, marge=totR?Math.round((totR-totD)/totR*100):0;
   const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
   const wk=D.productions.filter(p=>new Date(p.date)>=weekAgo&&p.type==='Femme');
@@ -714,13 +724,13 @@ function analysesHTML() {
   if(totD>totR)recos.push('🔴 Dépenses > Revenus. Réduisez les coûts.');
   if(D.clients.some(c=>(c.detteCur||0)>0))recos.push('🟡 Relancez les clients avec dettes impayées.');
   if(totR>0&&totD/totR>0.8)recos.push('🟡 Ratio dépenses/revenus élevé (>80%). Optimisez.');
-  if(prods.length===0)recos.push('🟡 Aucune production sur cette période.');
+  if(D.productions.length===0)recos.push('🟡 Aucune production enregistrée.');
   if(!recos.length)recos.push('✅ Bonne gestion !');
-  return `<h1>🧠 Analyses PME</h1><p class="desc">Indicateurs de performance (période)</p>
+  return `<h1>🧠 Analyses PME</h1><p class="desc">Indicateurs de performance</p>
   <div class="grid">
-    <div class="card accent"><div class="big">${fmt(bilan)}</div><div class="lbl">Résultat net période</div></div>
-    <div class="card"><div class="big" style="color:${marge>=0?'var(--green)':'var(--red)'}">${marge}%</div><div class="lbl">Marge nette période</div></div>
-    <div class="card"><div class="big">${prods.length}</div><div class="lbl">Productions période</div></div>
+    <div class="card accent"><div class="big">${fmt(bilan)}</div><div class="lbl">Résultat net</div></div>
+    <div class="card"><div class="big" style="color:${marge>=0?'var(--green)':'var(--red)'}">${marge}%</div><div class="lbl">Marge nette</div></div>
+    <div class="card"><div class="big">${D.productions.length}</div><div class="lbl">Productions</div></div>
     <div class="card"><div class="big">${D.employes.length}</div><div class="lbl">Effectif</div></div>
   </div>
   <div class="card mb-12"><h2>🏭 Production (7 jours)</h2>${Object.keys(byDay).length?Object.keys(byDay).sort().map(d=>`<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px"><span>${esc(d)}</span><span style="font-weight:600">${esc(byDay[d])} balles</span></div>`).join(''):'<div class="empty">Aucune donnée</div>'}</div>
@@ -759,31 +769,30 @@ function corbeilleHTML() {
   const items=[...D.trash].sort((a,b)=>b.deletedAt-a.deletedAt);
   const S=7*86400000;
   return `<h1>🗑️ Corbeille</h1><p class="desc">Rétention 7 jours avant suppression définitive</p>
-  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Motif</th><th>Suppression dans</th><th>Actions</th></tr></thead>
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Suppression dans</th><th>Actions</th></tr></thead>
   <tbody>${items.length?items.map(t=>{const r=Math.max(0,S-(Date.now()-t.deletedAt));const j=Math.ceil(r/86400000);const nm=t.content.name||t.content.client||t.content.desc||t.content.detail||t.content.produit||'(?)';
   return `<tr><td>${new Date(t.deletedAt).toLocaleDateString('fr-FR')}</td><td><span class="badge bg-n">${t.type}</span></td>
-  <td>${esc(nm).slice(0,40)}</td><td>${esc(t.motif||'').slice(0,30)}</td><td>${j}j</td>
+  <td>${esc(nm).slice(0,40)}</td><td>${j}j</td>
   <td class="gap-4"><button class="btn btn-sm btn-g" onclick="restoreT(${t.id})">Restaurer</button>
-  <button class="btn btn-sm btn-r" onclick="D.trash=D.trash.filter(x=>x.id!==${t.id});save();render()">Effacer</button></td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">Corbeille vide</td></tr>'}</tbody></table></div>
+  <button class="btn btn-sm btn-r" onclick="D.trash=D.trash.filter(x=>x.id!==${t.id});save();render()">Effacer</button></td></tr>`;}).join(''):'<tr><td colspan="5" class="empty">Corbeille vide</td></tr>'}</tbody></table></div>
   <p class="fs mt-8"><i class="ti ti-info-circle"></i> Les éléments sont automatiquement supprimés après 7 jours.</p>`;
 }
 
 // ─── INIT ───
-renderTabs();
-loadSB().then(()=>{
-  recalcDebts();save();
-  document.getElementById('filterInfo').textContent = 'Toute période';
-  document.getElementById('p-dash').innerHTML = dashHTML();
-  document.getElementById('p-clients').innerHTML = clientsHTML();
-  document.getElementById('p-commandes').innerHTML = commandesHTML();
-  document.getElementById('p-prod').innerHTML = prodHTML();
-  document.getElementById('p-montants').innerHTML = montantsHTML();
-  document.getElementById('p-depenses').innerHTML = depensesHTML();
-  document.getElementById('p-stock').innerHTML = stockHTML();
-  document.getElementById('p-finances').innerHTML = financesHTML();
-  document.getElementById('p-analyses').innerHTML = analysesHTML();
-  document.getElementById('p-employes').innerHTML = employesHTML();
-  document.getElementById('p-exporter').innerHTML = exporterHTML();
-  document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
-  dashCharts();
-});
+load(); renderTabs();
+document.getElementById('p-dash').innerHTML = dashHTML();
+document.getElementById('p-clients').innerHTML = clientsHTML();
+document.getElementById('p-commandes').innerHTML = commandesHTML();
+document.getElementById('p-prod').innerHTML = prodHTML();
+document.getElementById('p-montants').innerHTML = montantsHTML();
+document.getElementById('p-depenses').innerHTML = depensesHTML();
+document.getElementById('p-stock').innerHTML = stockHTML();
+document.getElementById('p-finances').innerHTML = financesHTML();
+document.getElementById('p-analyses').innerHTML = analysesHTML();
+document.getElementById('p-employes').innerHTML = employesHTML();
+document.getElementById('p-exporter').innerHTML = exporterHTML();
+document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
+dashCharts();
+</script>
+</body>
+</html>

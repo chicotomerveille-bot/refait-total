@@ -14,6 +14,19 @@
 <body>
 
 <div class="tabs" id="tabs"></div>
+<div class="filter-bar" id="filterBar">
+  <select id="fPreset" onchange="setFilter(this.value)">
+    <option value="all">🗓️ Toute période</option>
+    <option value="today">📅 Aujourd'hui</option>
+    <option value="week">📆 Cette semaine</option>
+    <option value="month">📅 Ce mois</option>
+    <option value="year">📅 Cette année</option>
+    <option value="custom">✏️ Personnalisée</option>
+  </select>
+  <input type="date" id="fStart" onchange="setFilter('custom')" />
+  <input type="date" id="fEnd" onchange="setFilter('custom')" />
+  <span class="filter-info" id="filterInfo"></span>
+</div>
 
 <div class="page active" id="p-dash"></div>
 <div class="page" id="p-clients"></div>
