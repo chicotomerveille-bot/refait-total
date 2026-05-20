@@ -15,6 +15,7 @@
 
 <div class="tabs" id="tabs"></div>
 <div class="filter-bar" id="filterBar">
+  <span class="page-title-mob" id="pageTitleMob">📊 Tableau de Bord</span>
   <select id="fPreset" onchange="setFilter(this.value)">
     <option value="all">🗓️ Toute période</option>
     <option value="today">📅 Aujourd'hui</option>
@@ -27,10 +28,12 @@
   <input type="date" id="fEnd" onchange="setFilter('custom')" />
   <span class="filter-info" id="filterInfo"></span>
   <span class="sp"></span>
-  <span class="user-info" id="userInfo"><button class="btn btn-sm btn-p" onclick="loginGoogle()"><i class="ti ti-brand-google"></i> Google</button></span>
+  <span class="user-info" id="userInfo"><button class="btn btn-sm btn-p" onclick="setUserName()">👤 Connexion</button></span>
   <span class="sp2"></span>
+  <button class="hamburger" id="hamburger" onclick="toggleNav()" aria-label="Menu">☰</button>
   <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">🌙 Sombre</button>
 </div>
+<div class="mobile-nav" id="mobileNav"></div>
 
 <div class="page active" id="p-dash"></div>
 <div class="page" id="p-clients"></div>

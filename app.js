@@ -10,33 +10,24 @@ let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
 let theme = localStorage.getItem('chips_theme')||'light';
-let currentUser = null;
+let userName = localStorage.getItem('chips_user')||'';
 
-function me() { return currentUser?.user_metadata?.full_name||currentUser?.email||''; }
+function me() { return userName; }
 
 function updateUserUI() {
   const el=document.getElementById('userInfo'); if(!el)return;
-  if(currentUser){
-    const nm=me(), av=currentUser.user_metadata?.avatar_url||'';
-    el.innerHTML=av?`<img src="${av}" class="uav" alt="" onclick="logout()"> <span onclick="logout()">${esc(nm)}</span>`:`<span class="uav uav-n" onclick="logout()">${esc(nm).charAt(0).toUpperCase()}</span><span onclick="logout()">${esc(nm)}</span>`;
+  if(userName){
+    el.innerHTML=`<span class="uav uav-n">${esc(userName).charAt(0).toUpperCase()}</span><span onclick="setUserName()">${esc(userName)}</span>`;
     el.className='user-info logged';
   } else {
-    el.innerHTML='<button class="btn btn-sm btn-p" onclick="loginGoogle()"><i class="ti ti-brand-google"></i> Google</button>';
+    el.innerHTML='<button class="btn btn-sm btn-p" onclick="setUserName()">👤 Connexion</button>';
   }
 }
-async function loginGoogle() {
-  if(!SB)return alert('Supabase non disponible');
-  await SB.auth.signInWithOAuth({provider:'google',options:{redirectTo:window.location.origin}});
-}
-async function logout() { await SB.auth.signOut(); }
-async function initAuth() {
-  if(!SB)return;
-  const {data:{session}}=await SB.auth.getSession();
-  if(session){currentUser=session.user;updateUserUI();}
-  SB.auth.onAuthStateChange((e,session)=>{
-    if(session)currentUser=session.user;else currentUser=null;
-    updateUserUI();render();
-  });
+function setUserName() {
+  const n=prompt(userName?'Changer de nom / Se deconnecter (laisser vide) :':'Entrez votre nom :',userName);
+  if(n===null)return;
+  userName=n.trim()||'';localStorage.setItem('chips_user',userName);
+  updateUserUI();render();
 }
 
 function toggleTheme() {
@@ -112,7 +103,15 @@ function nav(p) {
   currentPage = p;
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active',el.id==='p-'+p));
+  document.querySelectorAll('.mobile-nav a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
+  const labels={'dash':'📊 Tableau de Bord','clients':'👥 Clients','commandes':'🛒 Commandes','prod':'🏭 Production','montants':'💰 Montants','depenses':'💸 Dépenses','stock':'📦 Stock','finances':'📈 Finances','analyses':'🧠 Analyses','employes':'👷 Employés','exporter':'📥 Exporter','corbeille':'🗑️ Corbeille'};
+  const pt=document.getElementById('pageTitleMob');
+  if(pt)pt.textContent=labels[p]||p;
+  closeNav();
 }
+function toggleNav() { const mn=document.getElementById('mobileNav'); mn.classList.toggle('o'); }
+function closeNav() { document.getElementById('mobileNav').classList.remove('o'); }
+document.addEventListener('click',function(e){const mn=document.getElementById('mobileNav');if(mn.classList.contains('o')&&!e.target.closest('.mobile-nav-inner')&&!e.target.closest('#hamburger'))closeNav();});
 
 function renderTabs() {
   const items = [
@@ -124,6 +123,10 @@ function renderTabs() {
   document.getElementById('tabs').innerHTML = items.map(([id,ico,label]) =>
     `<a data-p="${id}" class="${id===currentPage?'active':''}" onclick="nav('${id}');render()">${ico} ${label}</a>`
   ).join('');
+  document.getElementById('mobileNav').innerHTML = `<div class="mobile-nav-inner"><div class="mn-close"><button onclick="closeNav()">✕</button></div>${
+    items.map(([id,ico,label]) =>
+      `<a data-p="${id}" class="${id===currentPage?'active':''}" onclick="nav('${id}');render()">${ico} ${label}</a>`
+    ).join('')}</div>`;
 }
 
 // ─── MODAL ───
@@ -805,8 +808,7 @@ function corbeilleHTML() {
 }
 
 // ─── INIT ───
-renderTabs();
-initAuth();
+renderTabs(); updateUserUI();
 loadSB().then(()=>{
   recalcDebts();save();
   document.documentElement.setAttribute('data-theme',theme);

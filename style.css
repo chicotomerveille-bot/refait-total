@@ -72,13 +72,31 @@ tr:hover td{background:var(--tr-hover)}
 .uav-n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700}
 .theme-btn{background:none;border:none;cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px;color:var(--text3);transition:all .15s;display:flex;align-items:center;gap:3px}
 .theme-btn:hover{color:var(--text);background:var(--hover)}
+.page-title-mob{display:none;font-size:13px;font-weight:600;margin-right:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;color:var(--text)}
+.hamburger{display:none;background:none;border:none;cursor:pointer;font-size:18px;padding:2px 6px;border-radius:6px;color:var(--text);transition:all .15s}
+.hamburger:hover{background:var(--hover)}
+.mobile-nav{display:none;position:fixed;top:0;left:0;right:0;bottom:0;z-index:90;background:rgba(0,0,0,.3);backdrop-filter:blur(3px)}
+.mobile-nav.o{display:block}
+.mobile-nav-inner{position:absolute;top:0;right:0;width:280px;max-width:85vw;height:100%;background:var(--surface);padding:1rem;overflow-y:auto;box-shadow:-4px 0 15px rgba(0,0,0,.1);transition:background .2s}
+.mobile-nav a{display:flex;align-items:center;gap:10px;padding:12px 14px;font-size:14px;font-weight:500;color:var(--text2);text-decoration:none;border-radius:8px;transition:all .12s;cursor:pointer}
+.mobile-nav a:hover{background:var(--hover);color:var(--text)}
+.mobile-nav a.active{background:var(--accent);color:#fff;font-weight:600}
+.mobile-nav .mn-close{display:flex;justify-content:flex-end;margin-bottom:8px}
+.mobile-nav .mn-close button{background:none;border:none;font-size:22px;cursor:pointer;color:var(--text3);padding:4px 8px;border-radius:6px}
+.mobile-nav .mn-close button:hover{background:var(--hover);color:var(--text)}
 .sp{flex:1}.sp2{width:4px}
 .mt-8{margin-top:6px}.mt-12{margin-top:10px}.mb-12{margin-bottom:10px}
 .gap-4{display:flex;gap:4px}.gap-8{display:flex;gap:8px}.wrap{flex-wrap:wrap}.aic{align-items:center}
 .tc{text-align:center}.fs{font-size:11px;color:var(--text3)}
 @media(max-width:600px){
-  .tabs a{padding:7px 8px;font-size:10.5px}
-  .page{padding:.75rem}
+  .tabs{display:none}
+  .hamburger{display:flex;align-items:center}
+  .page-title-mob{display:block}
+  .filter-bar{position:sticky;top:0}
+  .user-info .btn-sm{font-size:9px;padding:2px 5px}
+  .user-info.logged{font-size:10px;padding:2px 5px}
+  .uav,.uav-n{width:18px;height:18px;font-size:9px}
+  .page{padding:.75rem;padding-top:6px}
   .m-row{grid-template-columns:1fr}
   .grid{grid-template-columns:1fr}
   .filter-bar{gap:4px;padding:5px .5rem}
