@@ -346,7 +346,7 @@ function saveProd(id) {
   const taux=type==='Femme'?(shift==='Jour'?1800:2000):(shift==='Jour'?389:417);
   const paie=type==='Femme'?(quota?Math.round((reel/quota)*taux):0):reel*taux;
   if(reel<=0)return alert('Production invalide');
-  if(id){const p=D.productions.find(x=>x.id===id);if(p)Object.assign(p,{date,shift,employes,type,reel,quota,paie,notes});}
+  if(id){const p=D.productions.find(x=>x.id===id);if(p){const oldBles=Math.floor(p.reel/50);const newBles=Math.floor(reel/50);Object.assign(p,{date,shift,employes,type,reel,quota,paie,notes});if(type==='Femme'&&newBles!==oldBles){const d=newBles-oldBles;if(d>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:d,unite:'pièce',cout:0,desc:'Ajustement production '+reel+' sachets',createdBy:me()});else D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:-d,unite:'pièce',desc:'Ajustement production '+reel+' sachets',createdBy:me()});}}}
   else {
     D.productions.push({id:nextId++,date,shift,employes,type,reel,quota,paie,notes,createdBy:me()});
     if(type==='Femme'){const bles=Math.floor(reel/50);if(bles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:bles,unite:'pièce',cout:0,desc:'Production '+reel+' sachets',createdBy:me()});}
@@ -710,9 +710,13 @@ function stockHTML() {
   const cur={}; STK.forEach(c=>cur[c]=0);
   D.stockE.forEach(e=>{cur[e.categorie]=(cur[e.categorie]||0)+e.qte;});
   D.stockS.forEach(s=>{cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
+  // Balles calculées depuis les données réelles (productions - commandes)
+  const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
+  const cmdBalles=D.commandes.reduce((s,c)=>s+c.qte,0);
+  cur['Balles 🏀']=prodBalles-cmdBalles;
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées et sorties</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button></div>
-  <div class="grid" style="grid-template-columns:repeat(5,1fr)">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
+  <div class="grid">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
     <div class="big" style="font-size:20px;color:${(cur[c]||0)>=0?'var(--green)':'var(--red)'}">${cur[c]||0}</div>
     <div class="lbl" style="font-size:10px">${c}</div></div>`).join('')}</div>
   <div class="card mb-12"><h2>📥 Entrées</h2><div class="table-wrap">${makeStockTable(D.stockE,'E')}</div></div>
