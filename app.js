@@ -30,6 +30,7 @@ async function loadSB() {
   } catch(_){load()}
 }
 function save() {
+  recalcDebts();
   localStorage.setItem(K,JSON.stringify(D));
   if(SB) SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then().catch(()=>{});
 }
@@ -293,30 +294,18 @@ function montantForm(m) {
 function saveMontant(id) {
   const mt=num('mMt'); if(!mt)return alert('Montant requis');
   const type=val('mType'), client=val('mClient');
-  if(id){
-    const m=D.montants.find(x=>x.id===id); if(!m)return;
-    const oldClient=m.client, oldType=m.type, oldMt=m.montant;
-    m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=type;m.client=client;
-    // Reverse old debt effect then apply new one
-    if(oldType==='Dette reçue'&&oldClient) applyPmtToDebt(oldClient,-oldMt);
-    if(type==='Dette reçue'&&client) applyPmtToDebt(client,mt);
-  } else {
-    D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client});
-    if(type==='Dette reçue'&&client) applyPmtToDebt(client,mt);
-  }
+  if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=type;m.client=client;}}
+  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client});
   closeM();save();render();
 }
-function applyPmtToDebt(client,montant) {
-  const c=D.clients.find(x=>x.name===client); if(!c)return;
-  c.detteCur=Math.max(0,(c.detteCur||0)-montant);
-  if(montant<=0)return;
-  const cmds=D.commandes.filter(x=>x.client===client&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
-  let left=montant;
-  for(const cmd of cmds){
-    if(left<=0)break;
-    const pay=Math.min(left,cmd.reste);
-    cmd.paye+=pay; cmd.reste=cmd.prixTotal-cmd.paye; left-=pay;
-    if(cmd.reste<=0)cmd.statut='Livrée';
+function recalcDebts() {
+  for(const c of D.clients){
+    let debt=c.detteInit||0;
+    for(const cmd of D.commandes.filter(x=>x.client===c.name))
+      debt+=cmd.reste;
+    for(const mt of D.montants.filter(x=>x.client===c.name&&x.type==='Dette reçue'))
+      debt-=mt.montant;
+    c.detteCur=Math.max(0,debt);
   }
 }
 
@@ -741,6 +730,7 @@ function corbeilleHTML() {
 // ─── INIT ───
 renderTabs();
 loadSB().then(()=>{
+  recalcDebts();save();
   document.getElementById('p-dash').innerHTML = dashHTML();
   document.getElementById('p-clients').innerHTML = clientsHTML();
   document.getElementById('p-commandes').innerHTML = commandesHTML();
