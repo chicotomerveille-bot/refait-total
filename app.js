@@ -67,7 +67,7 @@ function val(id) { return document.getElementById(id)?.value||''; }
 function num(id) { return +document.getElementById(id)?.value||0; }
 
 // ─── TRASH ───
-function trashIt(type,item) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now()}); }
+function trashIt(type,item,motif) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now(),motif:motif||''}); }
 function cleanTrash() { const S=7*86400000; const b=D.trash.length; D.trash=D.trash.filter(t=>Date.now()-t.deletedAt<S); if(D.trash.length!==b)save(); }
 function restoreT(id) { const t=D.trash.find(x=>x.id===id); if(!t)return; D[t.type].push(t.content); D.trash=D.trash.filter(x=>x.id!==id); save(); render(); }
 
@@ -113,14 +113,27 @@ function payerDette(id) {
 }
 
 function confirmDel(msg,type,item) {
-  if(!confirm(msg))return;
+  const n=item.name||item.client||item.desc||item.detail||item.produit||'(?)';
+  openM(`
+    <h3>🗑️ Supprimer</h3>
+    <p>${msg}</p>
+    <p class="fs"><strong>${esc(n)}</strong></p>
+    <label>Motif de suppression</label>
+    <textarea id="delMotif" rows="3" placeholder="Raison..." style="width:100%"></textarea>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-r" onclick="execDel('${type}',${item.id})">Supprimer</button></div>
+  `);
+}
+function execDel(type,id) {
+  const item=D[type].find(x=>x.id===id); if(!item)return;
+  const motif=val('delMotif').trim();
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
   }
-  trashIt(type,item);
-  D[type]=D[type].filter(x=>x.id!==item.id);
-  save();render();
+  trashIt(type,item,motif);
+  D[type]=D[type].filter(x=>x.id!==id);
+  closeM();save();render();
 }
 
 // ─── COMMANDE ───
@@ -693,12 +706,12 @@ function corbeilleHTML() {
   const items=[...D.trash].sort((a,b)=>b.deletedAt-a.deletedAt);
   const S=7*86400000;
   return `<h1>🗑️ Corbeille</h1><p class="desc">Rétention 7 jours avant suppression définitive</p>
-  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Suppression dans</th><th>Actions</th></tr></thead>
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Motif</th><th>Suppression dans</th><th>Actions</th></tr></thead>
   <tbody>${items.length?items.map(t=>{const r=Math.max(0,S-(Date.now()-t.deletedAt));const j=Math.ceil(r/86400000);const nm=t.content.name||t.content.client||t.content.desc||t.content.detail||t.content.produit||'(?)';
   return `<tr><td>${new Date(t.deletedAt).toLocaleDateString('fr-FR')}</td><td><span class="badge bg-n">${t.type}</span></td>
-  <td>${esc(nm).slice(0,40)}</td><td>${j}j</td>
+  <td>${esc(nm).slice(0,40)}</td><td>${esc(t.motif||'').slice(0,30)}</td><td>${j}j</td>
   <td class="gap-4"><button class="btn btn-sm btn-g" onclick="restoreT(${t.id})">Restaurer</button>
-  <button class="btn btn-sm btn-r" onclick="D.trash=D.trash.filter(x=>x.id!==${t.id});save();render()">Effacer</button></td></tr>`;}).join(''):'<tr><td colspan="5" class="empty">Corbeille vide</td></tr>'}</tbody></table></div>
+  <button class="btn btn-sm btn-r" onclick="D.trash=D.trash.filter(x=>x.id!==${t.id});save();render()">Effacer</button></td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">Corbeille vide</td></tr>'}</tbody></table></div>
   <p class="fs mt-8"><i class="ti ti-info-circle"></i> Les éléments sont automatiquement supprimés après 7 jours.</p>`;
 }
 
