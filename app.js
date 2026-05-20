@@ -292,9 +292,32 @@ function montantForm(m) {
 
 function saveMontant(id) {
   const mt=num('mMt'); if(!mt)return alert('Montant requis');
-  if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=val('mType');m.client=val('mClient');}}
-  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type:val('mType'),client:val('mClient')});
+  const type=val('mType'), client=val('mClient');
+  if(id){
+    const m=D.montants.find(x=>x.id===id); if(!m)return;
+    const oldClient=m.client, oldType=m.type, oldMt=m.montant;
+    m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=type;m.client=client;
+    // Reverse old debt effect then apply new one
+    if(oldType==='Dette reçue'&&oldClient) applyPmtToDebt(oldClient,-oldMt);
+    if(type==='Dette reçue'&&client) applyPmtToDebt(client,mt);
+  } else {
+    D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client});
+    if(type==='Dette reçue'&&client) applyPmtToDebt(client,mt);
+  }
   closeM();save();render();
+}
+function applyPmtToDebt(client,montant) {
+  const c=D.clients.find(x=>x.name===client); if(!c)return;
+  c.detteCur=Math.max(0,(c.detteCur||0)-montant);
+  if(montant<=0)return;
+  const cmds=D.commandes.filter(x=>x.client===client&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
+  let left=montant;
+  for(const cmd of cmds){
+    if(left<=0)break;
+    const pay=Math.min(left,cmd.reste);
+    cmd.paye+=pay; cmd.reste=cmd.prixTotal-cmd.paye; left-=pay;
+    if(cmd.reste<=0)cmd.statut='Livrée';
+  }
 }
 
 // ─── DÉPENSE ───
