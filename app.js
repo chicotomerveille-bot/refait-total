@@ -1022,6 +1022,27 @@ function corbeilleHTML() {
   <p class="fs mt-8"><i class="ti ti-info-circle"></i> Les éléments sont automatiquement supprimés après 7 jours.</p>`;
 }
 
+// ─── SEED DATA ───
+function seedEmployees() {
+  const existing=D.employes.map(e=>e.name.toLowerCase().trim());
+  const names=[
+    {name:'B3 LUDOVIC',type:'Homme'},{name:'B2 François',type:'Homme'},
+    {name:'A1 Hortence',type:'Femme'},{name:'A2 Marie',type:'Femme'},
+    {name:'A3 Honorine',type:'Femme'},{name:'A4 Naomie',type:'Femme'},
+    {name:'A5 José',type:'Femme'},{name:'A6 Nathalie',type:'Femme'},
+    {name:'A7 Marie Claire',type:'Femme'},{name:'A8 Jertruie',type:'Femme'},
+    {name:'A9 Gwladys',type:'Femme'},{name:'B1 Audrey',type:'Femme'},
+  ];
+  let added=false;
+  for(const {name:n,type:t} of names){
+    if(!existing.includes(n.toLowerCase().trim())){
+      D.employes.push({id:nextId++,name:n,role:'',type:t,phone:'',dateEmbauche:today(),notes:'',createdBy:'admin'});
+      added=true;
+    }
+  }
+  if(added){save();render();}
+}
+
 // ─── INIT ───
 renderTabs(); updateUserUI();
 loadSB().then(()=>{
@@ -1042,4 +1063,5 @@ loadSB().then(()=>{
   document.getElementById('p-exporter').innerHTML = exporterHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI(); checkStorageSize();
+  seedEmployees();
 });
