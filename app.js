@@ -5,7 +5,7 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:3, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:4, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
@@ -41,6 +41,14 @@ function migrateSchema() {
     for(const s of D.stockInit){s.date=s.date||new Date().toISOString().slice(0,10);s.farine=s.farine||0;s.sachetsR=s.sachetsR||0;s.sachetsG=s.sachetsG||0;s.sachetsP=s.sachetsP||0;s.balles=s.balles||0;}
     D._schemaVer=3;
   }
+  if(cur<4){
+    for(const c of D.commandes){if(c.unite===undefined)c.unite='Balle';}
+    D._schemaVer=4;
+  }
+}
+
+function cmdStockBalles(c) {
+  return c.unite==='Sachet' ? Math.floor(c.qte/50) : c.qte;
 }
 
 // ─── SYNC STATUS ───
@@ -270,7 +278,8 @@ function execDel(type,id) {
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
-    D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:item.qte,unite:'pièce',cout:0,desc:'Annulation commande '+item.client,createdBy:me()});
+    const b=cmdStockBalles(item);
+    if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation commande '+item.client,createdBy:me()});
   }
   if(type==='productions'&&item.type==='Femme'){
     const bles=Math.floor(item.reel/50);
@@ -284,48 +293,71 @@ function execDel(type,id) {
 // ─── COMMANDE ───
 function commandeForm(cmd) {
   const e=!!cmd; const clOpts=D.clients.map(c=>`<option value="${esc(c.name)}"${e&&cmd.client===c.name?' selected':''}>${esc(c.name)}</option>`).join('');
+  const uniteVal=e?cmd.unite||'Balle':'Balle';
+  const puDef=e?Math.round(cmd.prixTotal/(cmd.qte||1)):(uniteVal==='Sachet'?500:25000);
   openM(`
     <h3>${e?'✏️ Modifier':'🛒 Nouvelle'} commande</h3>
     <label>Client</label><select id="coCli">${clOpts}<option value="">— Nouveau —</option></select>
     <label>Nouveau client</label><input id="coNew" placeholder="Nom" />
     <div class="m-row"><div><label>Date</label><input type="date" id="coDate" value="${e?cmd.date:today()}" /></div>
     <div><label>Produit</label><input id="coProd" value="${e?esc(cmd.produit):'Chips'}" /></div></div>
-    <div class="m-row"><div><label>Quantité</label><input type="number" id="coQte" value="${e?cmd.qte:1}" /></div>
-    <div><label>Prix unitaire</label><input type="number" id="coPu" value="${e?Math.round(cmd.prixTotal/(cmd.qte||1)):25000}" /></div></div>
-    <div class="m-row"><div><label>Acompte</label><input type="number" id="coPaye" value="${e?cmd.paye:0}" /></div>
-    <div><label>Statut</label><select id="coStat"><option value="En attente"${e&&cmd.statut==='En attente'?' selected':''}>⏳ En attente</option>
+    <div class="m-row"><div><label>Quantité</label><input type="number" id="coQte" value="${e?cmd.qte:1}" oninput="onCoQteChange()" /></div>
+    <div><label>Unité</label><select id="coUnite" onchange="onCoUniteChange()">
+      <option value="Balle"${uniteVal==='Balle'?' selected':''}>Balle (50 sachets)</option>
+      <option value="Sachet"${uniteVal==='Sachet'?' selected':''}>Sachet</option>
+    </select></div></div>
+    <div class="m-row"><div><label>Prix unitaire</label><input type="number" id="coPu" value="${puDef}" /></div>
+    <div><label>Acompte</label><input type="number" id="coPaye" value="${e?cmd.paye:0}" /></div></div>
+    <div id="coBallesInfo" style="font-size:.75rem;color:var(--muted);margin-bottom:.5rem"></div>
+    <div class="m-row"><div><label>Statut</label><select id="coStat"><option value="En attente"${e&&cmd.statut==='En attente'?' selected':''}>⏳ En attente</option>
     <option value="Livrée"${e&&cmd.statut==='Livrée'?' selected':''}>✅ Livrée</option>
     <option value="Annulée"${e&&cmd.statut==='Annulée'?' selected':''}>❌ Annulée</option></select></div></div>
     <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
     <button class="btn btn-p" onclick="saveCommande(${e?cmd.id:'null'})">${e?'Modifier':'Enregistrer'}</button></div>
   `);
   document.getElementById('coCli').addEventListener('change',function(){document.getElementById('coNew').disabled=!!this.value});
+  onCoQteChange();
+}
+function onCoUniteChange() {
+  const u=document.getElementById('coUnite').value;
+  document.getElementById('coPu').value=u==='Sachet'?500:25000;
+  onCoQteChange();
+}
+function onCoQteChange() {
+  const qte=parseFloat(document.getElementById('coQte').value)||0;
+  const u=document.getElementById('coUnite').value;
+  const el=document.getElementById('coBallesInfo');
+  if(u==='Sachet'){
+    const balles=Math.floor(qte/50);
+    el.innerHTML=balles>0?`📦 <strong>${balles}</strong> balle(s) déduite(s) du stock<br>🔄 ${qte-balles*50} sachet(s) restant(s) non comptés`:'📦 < 50 sachets, aucune balle déduite du stock';
+  } else {
+    el.innerHTML=`📦 <strong>${qte}</strong> balle(s) = <strong>${qte*50}</strong> sachets`;
+  }
 }
 
 function saveCommande(id) {
   const sel=val('coCli'), nc=val('coNew').trim(), client=sel||nc||'Client';
-  const date=val('coDate'), prod=val('coProd').trim()||'Chips', qte=num('coQte')||1, pu=num('coPu')||25000;
+  const date=val('coDate'), prod=val('coProd').trim()||'Chips', qte=num('coQte')||1, unite=val('coUnite')||'Balle', pu=num('coPu')||(unite==='Sachet'?500:25000);
   const pt=qte*pu, paye=num('coPaye'), stat=val('coStat');
+  const ballesEq=unite==='Sachet'?Math.floor(qte/50):qte;
   if(id) {
     const c=D.commandes.find(x=>x.id===id); if(!c)return;
-    const oldReste=c.reste, oldClient=c.client, oldQte=c.qte;
-    const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
-    if(qte!==oldQte){const dq=qte-oldQte;if(dq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:dq,unite:'pièce',desc:'Ajustement commande '+client,createdBy:me()});else D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:-dq,unite:'pièce',cout:0,desc:'Ajustement commande '+client,createdBy:me()});}
-    // Remove old debt from previous client
+    const oldReste=c.reste, oldClient=c.client, oldBalles=cmdStockBalles(c);
+    const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.unite=unite;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
+    if(ballesEq!==oldBalles){const dq=ballesEq-oldBalles;if(dq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:dq,unite:'pièce',desc:'Ajustement commande '+client,createdBy:me()});else D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:-dq,unite:'pièce',cout:0,desc:'Ajustement commande '+client,createdBy:me()});}
     const oldCl=D.clients.find(x=>x.name===oldClient);
     if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
-    // Add new debt to current client
     let curCl=D.clients.find(x=>x.name===client);
     if(!curCl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});curCl=D.clients[D.clients.length-1];}
     if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
     if(diff!==0) D.montants.push({id:nextId++,date,desc:diff>0?'Acompte commande - '+client:'Correction acompte - '+client,type:'Vente',client,montant:diff,createdBy:me()});
   } else {
-    D.commandes.push({id:nextId++,client,date,produit:prod,qte,prixTotal:pt,paye,reste:pt-paye,statut:stat,createdBy:me()});
+    D.commandes.push({id:nextId++,client,date,produit:prod,qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:stat,createdBy:me()});
     if(paye>0) D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
     let cl=D.clients.find(x=>x.name===client);
     if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});cl=D.clients[D.clients.length-1];}
     if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
-    D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte,unite:'pièce',desc:'Commande '+client,createdBy:me()});
+    if(ballesEq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:ballesEq,unite:'pièce',desc:'Commande '+client,createdBy:me()});
   }
   closeM();save();render();
 }
@@ -567,8 +599,18 @@ function prodForm(p) {
     <button class="btn btn-p" onclick="saveProd(${e?p.id:'null'})">${e?'Modifier':'Enregistrer'}</button></div>
   `);
   if(e){
-    if(p.type==='Femme'){document.getElementById('p-fem').value=p.reel;calcProdPaie();}
-    else{document.getElementById('p-hom-grp').style.display='';document.getElementById('p-hom').value=p.reel;onProdEmployeChange();}
+    const allEmps=prodEmps(p);
+    if(allEmps.length>1){
+      _prodMode='multi';document.getElementById('p-solo-section').style.display='none';document.getElementById('p-multi-section').style.display='';
+      renderEmpCheckboxes();
+      allEmps.forEach(n=>{const cb=document.querySelector(`#p-employe-checkboxes input[value="${esc(n)}"]`);if(cb)cb.checked=true;});
+      document.getElementById('p-multi-count').textContent=allEmps.length+' sélectionné(s)';
+      if(p.type==='Femme'){document.getElementById('p-multi-sachets-grp').style.display='';document.getElementById('p-multi-sachets').value=p.reel;}
+      calcMultiProdPaie();
+    } else {
+      if(p.type==='Femme'){document.getElementById('p-fem').value=p.reel;calcProdPaie();}
+      else{document.getElementById('p-hom-grp').style.display='';document.getElementById('p-hom').value=p.reel;onProdEmployeChange();}
+    }
   } else {
     renderEmpCheckboxes();onProdEmployeChange();
   }
@@ -587,6 +629,7 @@ function saveProd(id) {
     else {const quota=PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300);if(!sachets)return alert('Nombre de sachets requis');paiePar=Math.round((sachets/quota)*PAIE_FEMMES.jour.taux);}
     const balles=sachets>0?Math.floor(sachets/50):0;
     const noms=[].map.call(checks,c=>c.value).join(', ');
+    if(id){const idx=D.productions.findIndex(x=>x.id===id);if(idx>=0)D.productions.splice(idx,1);}
     [].forEach.call(checks,emp=>{
       D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:sachets,quota:PAIE_FEMMES.jour.quotas[checks.length]||0,paie:paiePar,notes:notes||'Équipe: '+noms,createdBy:me()});
     });
@@ -854,7 +897,7 @@ function exportToExcel(section) {
   const fil=(key,arr)=>dateSections.includes(key)?arr.filter(x=>inRange(x.date)):arr;
   const map={
     clients:{data:D.clients,h:['Nom','Téléphone','Adresse','Dette initiale','Dette actuelle'],f:c=>[c.name,c.phone||'',c.addr||'',c.detteInit||0,c.detteCur||0]},
-    commandes:{data:fil('commandes',D.commandes),h:['Client','Date','Produit','Quantité','Prix total','Payé','Reste','Statut'],f:c=>[c.client,c.date,c.produit,c.qte,c.prixTotal,c.paye,c.reste,c.statut]},
+    commandes:{data:fil('commandes',D.commandes),h:['Client','Date','Produit','Quantité','Unité','🏀 Balles','Prix total','Payé','Reste','Statut'],f:c=>[c.client,c.date,c.produit,c.qte,c.unite||'Balle',cmdStockBalles(c),c.prixTotal,c.paye,c.reste,c.statut]},
     productions:{data:fil('productions',D.productions),h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles','Sachets'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,Math.floor(p.reel/50),p.type==='Femme'?p.reel:'']},
     montants:{data:fil('montants',D.montants),h:['Date','Description','Type','Client','Montant'],f:m=>[m.date,m.desc,m.type,m.client||'',m.montant]},
     depenses:{data:fil('depenses',D.depenses),h:['Date','Catégorie','Montant','Détail','Employé'],f:d=>[d.date,d.categorie,d.montant,d.detail||'',d.employe||'']},
@@ -867,7 +910,7 @@ function exportToExcel(section) {
   const cmd=fil('commandes',D.commandes),prod=fil('productions',D.productions),mont=fil('montants',D.montants),dep=fil('depenses',D.depenses);
   const totRevenus=mont.reduce((s,m)=>s+m.montant,0),totDepenses=dep.reduce((s,d)=>s+d.montant,0);
   const prodBalles=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
-  const cmdBalles=cmd.reduce((s,c)=>s+c.qte,0);
+  const cmdBalles=cmd.reduce((s,c)=>s+cmdStockBalles(c),0);
   const recap=[
     ['RÉCAPITULATIF - Période',filterRange.start&&filterRange.end?`${filterRange.start} → ${filterRange.end}`:'Toute période'],
     [],['Indicateur','Valeur'],
@@ -929,8 +972,8 @@ function dashHTML() {
   const totalSachets=prodsAll.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0);
   const totalBalles=Math.floor(totalSachets/50);
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
-  const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+c.qte,0);
-  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - D.commandes.reduce((s,c)=>s+c.qte,0);
+  const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
   const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
@@ -1006,19 +1049,41 @@ function clientsHTML() {
 
 function commandesHTML() {
   const cmdList=D.commandes.filter(c=>inRange(c.date));
-  return `<h1>🛒 Commandes</h1><p class="desc">Suivi des commandes clients. ${!filterRange.start&&!filterRange.end?'':cmdList.length+' sur la période'}</p>
+  return `<h1>🛒 Commandes</h1>
+  <p class="desc">Suivi des commandes clients. ${!filterRange.start&&!filterRange.end?'':cmdList.length+' sur la période'}</p>
   <div class="toolbar"><button class="btn btn-p" onclick="commandeForm()">+ Nouvelle</button></div>
-  <div class="table-wrap"><table><thead><tr><th>Client</th><th>Produit</th><th>Qté</th><th>Total</th><th>✅ Payé</th><th>⏳ Reste</th><th>Statut</th><th>Actions</th></tr></thead>
-  <tbody>${cmdList.length?[...cmdList].sort((a,b)=>b.date.localeCompare(a.date)).map(c=>{
-    const r=c.prixTotal-c.paye;
-    return `<tr><td>${esc(c.client)}<br><span class="fs">${esc(c.date)}</span></td><td>${esc(c.produit)}</td><td>${esc(c.qte)}</td>
-    <td><strong>${fmt(c.prixTotal)}</strong></td><td style="color:var(--green)">${fmt(c.paye)}</td>
-    <td style="color:${r>0?'var(--red)':'var(--green)'}">${fmt(r)}</td>
-    <td><span class="badge ${c.statut==='Livrée'?'bg-g':c.statut==='Annulée'?'bg-r':'bg-y'}">${esc(c.statut)}</span></td>
-    <td class="gap-4"><button class="btn btn-sm btn-gh" onclick="commandeForm(D.commandes.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
-    ${r>0?`<button class="btn btn-sm btn-g" onclick="payerCmd(${c.id})"><i class="ti ti-cash"></i></button>`:''}
-    <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cette commande?','commandes',D.commandes.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button></td></tr>`;
-  }).join(''):'<tr><td colspan="8" class="empty">Aucune commande</td></tr>'}</tbody></table></div>`;
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>Client</th><th>Produit</th><th>Qté</th><th>🏀 Stock</th><th>Total</th><th>✅ Payé</th><th>⏳ Reste</th><th>Statut</th><th>Actions</th>
+    </tr></thead>
+    <tbody>${
+      cmdList.length
+      ? [...cmdList].sort((a,b)=>b.date.localeCompare(a.date)).map(c=>{
+          const r=c.prixTotal-c.paye;
+          const un=c.unite||'Balle';
+          const bEq=cmdStockBalles(c);
+          const qteLabel=un==='Sachet'?c.qte+' sach':c.qte+' bal';
+          return `<tr>
+            <td>${esc(c.client)}<br><span class="fs">${esc(c.date)}</span></td>
+            <td>${esc(c.produit)}</td>
+            <td><strong>${qteLabel}</strong></td>
+            <td style="color:var(--orange);font-weight:600">${bEq>0?'🏀 '+bEq:'<span class="fs">—</span>'}</td>
+            <td><strong>${fmt(c.prixTotal)}</strong></td>
+            <td style="color:var(--green)">${fmt(c.paye)}</td>
+            <td style="color:${r>0?'var(--red)':'var(--green)'}">${fmt(r)}</td>
+            <td><span class="badge ${c.statut==='Livrée'?'bg-g':c.statut==='Annulée'?'bg-r':'bg-y'}">${esc(c.statut)}</span></td>
+            <td class="gap-4">
+              <button class="btn btn-sm btn-gh" onclick="commandeForm(D.commandes.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
+              ${r>0?`<button class="btn btn-sm btn-g" onclick="payerCmd(${c.id})"><i class="ti ti-cash"></i></button>`:''}
+              <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cette commande?','commandes',D.commandes.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button>
+            </td>
+          </tr>`;
+        }).join('')
+      : '<tr><td colspan="9" class="empty">Aucune commande</td></tr>'
+    }</tbody>
+  </table>
+  </div>`;
 }
 
 // Week calculation
@@ -1036,15 +1101,19 @@ function prodHTML() {
   const moisCourant=new Date().toISOString().slice(0,7);
   const byEmp={};
   prodsFiltered.forEach(p=>{
-    const n=p.employes&&p.employes[0]||'—';
-    if(!byEmp[n])byEmp[n]={nom:n,typeEmp:p.type,totFem:0,totHom:0,totB:0,totPaie:0,moisPaie:0,totQuota:0,nbJours:0};
-    const r=byEmp[n];
-    if(p.type==='Femme')r.totFem+=p.reel;else r.totHom+=p.reel;
-    r.totB+=p.type==='Femme'?Math.floor(p.reel/50):p.reel;
-    r.totPaie+=p.paie;r.nbJours+=1;
-    if(p.date&&p.date.slice(0,7)===moisCourant)r.moisPaie+=p.paie;
-    const q=getQuotaAttendu(p.type,p.shift,1);
-    if(q)r.totQuota+=q;
+    const emps=prodEmps(p);
+    const nb=emps.length;
+    const paiePar=nb>1?Math.round(p.paie/nb):p.paie;
+    const reelPar=nb>1?Math.round(p.reel/nb):p.reel;
+    const quotaPar=nb>1&&p.quota?Math.round(p.quota/nb):p.quota||0;
+    const ballesPar=p.type==='Femme'?Math.floor(reelPar/50):reelPar;
+    emps.forEach(n=>{
+      if(!byEmp[n])byEmp[n]={nom:n,typeEmp:p.type,totFem:0,totHom:0,totB:0,totPaie:0,moisPaie:0,totQuota:0,nbJours:0};
+      const r=byEmp[n];
+      if(p.type==='Femme')r.totFem+=reelPar;else r.totHom+=reelPar;
+      r.totB+=ballesPar;r.totPaie+=paiePar;r.totQuota+=quotaPar;r.nbJours+=1;
+      if(p.date&&p.date.slice(0,7)===moisCourant)r.moisPaie+=paiePar;
+    });
   });
   const empRows=Object.values(byEmp).filter(e=>e.nom!=='—').sort((a,b)=>b.totPaie-a.totPaie);
 
@@ -1153,7 +1222,7 @@ function stockHTML() {
   // Balles: stock initial + productions - commandes (stockE/stockS ignorés)
   const initBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0);
   const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
-  const cmdBalles=D.commandes.reduce((s,c)=>s+c.qte,0);
+  const cmdBalles=D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
   cur['Balles 🏀']=initBalles+prodBalles-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
