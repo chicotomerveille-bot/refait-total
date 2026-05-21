@@ -5,14 +5,70 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:2, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
 let theme = localStorage.getItem('chips_theme')||'light';
 let userName = localStorage.getItem('chips_user')||'';
+let syncStatus = 'ok'; // 'ok' | 'saving' | 'error'
 
 function me() { return userName; }
+
+// ─── SCHÉMA & MIGRATION ───
+function migrateSchema() {
+  const cur=D._schemaVer||1;
+  if(cur<2){
+    const now=new Date().toISOString();
+    D.clients=D.clients||[]; D.commandes=D.commandes||[]; D.productions=D.productions||[]; D.montants=D.montants||[]; D.depenses=D.depenses||[]; D.stockE=D.stockE||[]; D.stockS=D.stockS||[]; D.employes=D.employes||[]; D.retraits=D.retraits||[]; D.trash=D.trash||[];
+    for(const c of D.clients){c.name=c.name||'';c.phone=c.phone||'';c.addr=c.addr||'';c.detteInit=c.detteInit||0;c.detteCur=c.detteCur||0;}
+    for(const c of D.commandes){c.client=c.client||'';c.date=c.date||now.slice(0,10);c.produit=c.produit||'Chips';c.qte=c.qte||0;c.prixTotal=c.prixTotal||0;c.paye=c.paye||0;c.reste=c.reste||0;c.statut=c.statut||'En attente';}
+    for(const p of D.productions){p.date=p.date||now.slice(0,10);p.shift=p.shift||'Jour';p.type=p.type||'Femme';p.employes=p.employes||(p.employe?[p.employe]:[]);p.reel=p.reel||0;p.quota=p.quota||0;p.paie=p.paie||0;p.notes=p.notes||'';}
+    for(const m of D.montants){m.date=m.date||now.slice(0,10);m.desc=m.desc||'';m.type=m.type||'Vente';m.client=m.client||'';m.montant=m.montant||0;}
+    for(const d of D.depenses){d.date=d.date||now.slice(0,10);d.categorie=d.categorie||'Autre';d.montant=d.montant||0;d.detail=d.detail||'';d.employe=d.employe||'';}
+    for(const s of D.stockE){s.date=s.date||now.slice(0,10);s.categorie=s.categorie||'';s.qte=s.qte||0;s.unite=s.unite||'pièce';s.cout=s.cout||0;s.desc=s.desc||'';}
+    for(const s of D.stockS){s.date=s.date||now.slice(0,10);s.categorie=s.categorie||'';s.qte=s.qte||0;s.unite=s.unite||'pièce';s.desc=s.desc||'';}
+    for(const e of D.employes){e.name=e.name||'';e.type=e.type||'Autre';e.phone=e.phone||'';e.dateEmbauche=e.dateEmbauche||now.slice(0,10);e.notes=e.notes||'';}
+    for(const r of D.retraits){r.date=r.date||now.slice(0,10);r.employe=r.employe||'';r.montant=r.montant||0;r.notes=r.notes||'';}
+    D._schemaVer=2;
+  }
+}
+
+// ─── SYNC STATUS ───
+function updateSyncUI() {
+  const el=document.getElementById('syncStatus');
+  if(!el)return;
+  if(syncStatus==='saving'){el.innerHTML='<span style="color:var(--amber)">⟳ Sauvegarde...</span>';return;}
+  if(syncStatus==='error'){el.innerHTML='<span style="color:var(--red)">⚠ Échec synchro</span>';return;}
+  el.innerHTML='<span style="color:var(--green)">✓ Synchronisé</span>';
+}
+function saveSB() {
+  syncStatus='saving';updateSyncUI();
+  if(!SB){syncStatus='ok';updateSyncUI();return Promise.resolve();}
+  return SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then(()=>{syncStatus='ok';updateSyncUI();}).catch(()=>{
+    // Retry once
+    return SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then(()=>{syncStatus='ok';updateSyncUI();}).catch(()=>{syncStatus='error';updateSyncUI();});
+  });
+}
+
+// ─── ERROR HANDLER ───
+window.onerror=function(msg,url,line){
+  const el=document.createElement('div');
+  el.style.cssText='position:fixed;bottom:10px;left:10px;right:10px;background:var(--surface);border:2px solid var(--red);border-radius:8px;padding:10px;font-size:12px;z-index:999;box-shadow:0 4px 12px rgba(0,0,0,.2);max-width:400px';
+  el.innerHTML=`<strong>⚠ Erreur</strong><br>${msg.toString().slice(0,200)}<br><button onclick="this.parentElement.remove()" style="margin-top:6px;padding:2px 8px;border:1px solid var(--border);border-radius:4px;background:var(--surface);cursor:pointer">Fermer</button>`;
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),8000);
+};
+window.addEventListener('unhandledrejection',function(e){console.error('Promise error',e.reason);});
+
+// ─── LOCALSTORAGE SIZE CHECK ───
+function checkStorageSize() {
+  try{
+    const sz=new Blob([localStorage.getItem(K)||'']).size;
+    const limit=5*1024*1024; // ~5MB
+    if(sz>limit*0.8) console.warn('Stockage local presque plein ('+Math.round(sz/1024)+' Ko / '+Math.round(limit/1024)+' Ko)');
+  }catch(e){}
+}
 
 function updateUserUI() {
   const el=document.getElementById('userInfo'); if(!el)return;
@@ -72,6 +128,7 @@ function load() {
   try {
     const r = localStorage.getItem(K);
     if (r) { const p = JSON.parse(r); D = p; 
+      migrateSchema();
       const all = [...p.clients,...p.commandes,...p.productions,...p.montants,...p.depenses,...p.stockE,...p.stockS,...p.employes,...p.retraits,...p.trash];
       nextId = all.reduce((m,x)=>Math.max(m,x.id||0),0)+1;
     }
@@ -83,6 +140,7 @@ async function loadSB() {
     const {data,error} = await SB.from('app_state').select('data').eq('id',1).single();
     if(error||!data||!data.data||!Object.keys(data.data).length){load();return;}
     D = data.data;
+    migrateSchema();
     if(!D.clients) Object.assign(D,{clients:[],commandes:[],productions:[],montants:[],depenses:[],stockE:[],stockS:[],employes:[],retraits:[],trash:[]});
     const all = [].concat(...['clients','commandes','productions','montants','depenses','stockE','stockS','employes','retraits','trash'].map(k=>D[k]||[]));
     nextId = all.reduce((m,x)=>Math.max(m,x.id||0),0)+1;
@@ -91,7 +149,8 @@ async function loadSB() {
 function save() {
   recalcDebts();
   localStorage.setItem(K,JSON.stringify(D));
-  if(SB) SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then().catch(()=>{});
+  saveSB();
+  checkStorageSize();
 }
 function today() { return new Date().toISOString().slice(0,10); }
 function fmt(n) { return (n||0).toLocaleString('fr-FR')+' FCFA'; }
@@ -591,6 +650,7 @@ function exportToExcel(section) {
 // ─── RENDER ───
 function render() {
   cleanTrash(); renderTabs();
+  try {
   document.getElementById('p-dash').innerHTML = dashHTML();
   document.getElementById('p-clients').innerHTML = clientsHTML();
   document.getElementById('p-commandes').innerHTML = commandesHTML();
@@ -603,7 +663,8 @@ function render() {
   document.getElementById('p-employes').innerHTML = employesHTML();
   document.getElementById('p-exporter').innerHTML = exporterHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
-  dashCharts();
+  dashCharts(); updateSyncUI();
+  } catch(e){console.error('Render error',e);}
 }
 
 function dashHTML() {
@@ -899,6 +960,7 @@ function corbeilleHTML() {
   const items=[...D.trash].sort((a,b)=>b.deletedAt-a.deletedAt);
   const S=7*86400000;
   return `<h1>🗑️ Corbeille</h1><p class="desc">Rétention 7 jours avant suppression définitive</p>
+  <div class="toolbar">${items.length?`<button class="btn btn-r btn-sm" onclick="if(confirm('Vider la corbeille ? Cette action est irréversible.')){D.trash=[];save();render()}">🗑️ Vider la corbeille</button>`:''}</div>
   <div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Contenu</th><th>Motif</th><th>Supprimé par</th><th>Suppression dans</th><th>Actions</th></tr></thead>
   <tbody>${items.length?items.map(t=>{const r=Math.max(0,S-(Date.now()-t.deletedAt));const j=Math.ceil(r/86400000);const nm=t.content.name||t.content.client||t.content.desc||t.content.detail||t.content.produit||'(?)';
   return `<tr><td>${new Date(t.deletedAt).toLocaleDateString('fr-FR')}</td><td><span class="badge bg-n">${t.type}</span></td>
@@ -927,5 +989,5 @@ loadSB().then(()=>{
   document.getElementById('p-employes').innerHTML = employesHTML();
   document.getElementById('p-exporter').innerHTML = exporterHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
-  dashCharts();
+  dashCharts(); updateSyncUI(); checkStorageSize();
 });
