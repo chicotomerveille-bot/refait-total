@@ -11,7 +11,11 @@ let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
 let theme = localStorage.getItem('chips_theme')||'light';
 let userName = localStorage.getItem('chips_user')||'';
-let syncStatus = 'ok'; // 'ok' | 'saving' | 'error'
+let syncStatus = 'ok';
+let _prodFilter = 'today';
+
+const PAIE_FEMMES = { jour: { taux: 1800, quotas: { 1: 400, 2: 600, 3: 800, 4: 1000, 5: 1200, 6: 1400 } }, nuit: { taux: 2000 } };
+const PAIE_HOMMES = { jour: { tauxParBalle: 389, quotaParJour: 6, quotaSemaine: 36, salaireSemaineObjectif: 14000 }, nuit: { tauxParBalle: 417, quotaParJour: 6, quotaSemaine: 36, salaireSemaineObjectif: 15000 } };
 
 function me() { return userName; }
 
@@ -336,100 +340,272 @@ function payerCmd(id) {
 }
 
 // ─── PRODUCTION ───
+function getQuotaAttendu(typeEmp, shift, nb) {
+  if(typeEmp==='Femme'){
+    if(shift==='Nuit') return null;
+    return PAIE_FEMMES.jour.quotas[nb] || null;
+  }
+  if(typeEmp==='Homme'){
+    return 6;
+  }
+  return null;
+}
+function calcPaieFromProd(typeEmp, fem, hom, shift, nb) {
+  if(typeEmp==='Femme'){
+    if(shift==='Nuit') return PAIE_FEMMES.nuit.taux;
+    const quota=PAIE_FEMMES.jour.quotas[nb]||400;
+    return Math.round((fem/quota)*PAIE_FEMMES.jour.taux);
+  }
+  if(typeEmp==='Homme'){
+    const rule=PAIE_HOMMES[shift==='Nuit'?'nuit':'jour'];
+    return hom*rule.tauxParBalle;
+  }
+  return 0;
+}
+let _prodMode='solo';
+function setProdMode(m) {
+  _prodMode=m;
+  const soloBtn=document.getElementById('btn-mode-solo'), multiBtn=document.getElementById('btn-mode-multi');
+  const soloSec=document.getElementById('p-solo-section'), multiSec=document.getElementById('p-multi-section');
+  const active='linear-gradient(135deg,var(--orange),var(--accent))', inactive='background:var(--hover);color:var(--text2);border-color:transparent';
+  if(m==='solo'){
+    soloBtn.style.cssText='flex:1;padding:.5rem;border-radius:.55rem;font-size:.78rem;font-weight:700;border:2px solid var(--accent);background:'+active+';color:#fff;cursor:pointer';
+    multiBtn.style.cssText='flex:1;padding:.5rem;border-radius:.55rem;font-size:.78rem;font-weight:700;border:2px solid var(--border);background:var(--hover);color:var(--text2);cursor:pointer';
+    soloSec.style.display='grid'; multiSec.style.display='none';
+  } else {
+    multiBtn.style.cssText='flex:1;padding:.5rem;border-radius:.55rem;font-size:.78rem;font-weight:700;border:2px solid var(--accent);background:'+active+';color:#fff;cursor:pointer';
+    soloBtn.style.cssText='flex:1;padding:.5rem;border-radius:.55rem;font-size:.78rem;font-weight:700;border:2px solid var(--border);background:var(--hover);color:var(--text2);cursor:pointer';
+    soloSec.style.display='none'; multiSec.style.display='';
+    renderEmpCheckboxes();
+  }
+}
+function renderEmpCheckboxes() {
+  const c=document.getElementById('p-employe-checkboxes'); if(!c)return;
+  c.innerHTML=D.employes.filter(x=>x.type==='Femme').map(e=>`
+    <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">
+      <input type="checkbox" value="${esc(e.name)}" onchange="onMultiEmpChange()">${esc(e.name)}
+    </label>`).join('')||'<div style="color:var(--muted);font-size:12px">Aucune employée femme</div>';
+  onMultiEmpChange();
+}
+function onMultiEmpChange() {
+  const checks=document.querySelectorAll('#p-employe-checkboxes input:checked');
+  document.getElementById('p-multi-count').textContent=checks.length+' sélectionné(s)';
+  const nb=checks.length;
+  if(nb>=2){
+    document.getElementById('p-multi-sachets-grp').style.display='';
+    if(shiftVal()==='Jour'){const q=PAIE_FEMMES.jour.quotas[nb]||(nb*300);document.getElementById('p-quota-attendu').textContent=q+' sach';}
+  } else {
+    document.getElementById('p-multi-sachets-grp').style.display='none';
+    document.getElementById('p-paie-result').style.display='none';
+  }
+}
+function shiftVal(){const el=document.getElementById('p-shift');return el?el.value:'Jour';}
+function onProdShiftChange() {
+  const shift=shiftVal();
+  if(_prodMode==='multi'){
+    const nb=document.querySelectorAll('#p-employe-checkboxes input:checked').length;
+    if(nb>=2&&shift==='Jour'){const q=PAIE_FEMMES.jour.quotas[nb]||(nb*300);document.getElementById('p-quota-attendu').textContent=q+' sach';}
+    calcMultiProdPaie();
+  } else {
+    onProdEmployeChange();
+  }
+}
+function onProdEmployeChange() {
+  const empId=document.getElementById('p-employe').value;
+  const emp=empId?D.employes.find(e=>e.id===+empId):null;
+  const typeEmp=emp?emp.type:'Femme';
+  const shift=shiftVal();
+  const qi=document.getElementById('p-quota-info-grp');
+  if(typeEmp==='Femme'){
+    document.getElementById('p-fem-grp').style.display='';
+    document.getElementById('p-hom-grp').style.display='none';
+    const q=getQuotaAttendu(typeEmp,shift,1);
+    if(q!==null){qi.style.display='';document.getElementById('p-quota-info').textContent=q+' sachets';}
+    else qi.style.display='none';
+  } else {
+    document.getElementById('p-fem-grp').style.display='none';
+    document.getElementById('p-hom-grp').style.display='';
+    qi.style.display='';document.getElementById('p-quota-info').textContent='6 balles/jour';
+  }
+  calcProdPaie();
+}
+function calcProdPaie() {
+  const empId=document.getElementById('p-employe').value;
+  const emp=empId?D.employes.find(e=>e.id===+empId):null;
+  const typeEmp=emp?emp.type:'Femme';
+  const shift=shiftVal();
+  const fem=parseFloat(document.getElementById('p-fem').value)||0;
+  const hom=parseFloat(document.getElementById('p-hom').value)||0;
+  const reel=typeEmp==='Femme'?fem:hom;
+  if(!reel){document.getElementById('p-paie-result').style.display='none';return;}
+  const quota=getQuotaAttendu(typeEmp,shift,1);
+  const qb=document.getElementById('p-quota-block');
+  const r3=document.getElementById('p-paie-regle3');
+  if(quota!==null){
+    document.getElementById('p-quota-attendu').textContent=fmtN(quota)+(typeEmp==='Femme'?' sach':' bal');
+    document.getElementById('p-quota-reel').textContent=fmtN(reel)+(typeEmp==='Femme'?' sach':' bal');
+    const ec=reel-quota;
+    const ecEl=document.getElementById('p-quota-ecart');
+    if(ec>0){ecEl.textContent='+'+fmtN(ec);ecEl.style.color='var(--green)';}
+    else if(ec<0){ecEl.textContent=fmtN(ec);ecEl.style.color='var(--red)';}
+    else{ecEl.textContent='Exact ✓';ecEl.style.color='var(--green)';}
+    qb.style.display='grid';
+  } else qb.style.display='none';
+  const paie=calcPaieFromProd(typeEmp,fem,hom,shift,1);
+  if(typeEmp==='Femme'&&shift==='Jour'&&quota&&fem>0)
+    r3.innerHTML='📐 Règle de 3 : '+fmtN(quota)+' sachets → 1 800 FCFA | '+fmtN(fem)+' sachets → <strong>'+fmt(paie)+'</strong>';
+  else if(typeEmp==='Femme'&&shift==='Nuit')
+    r3.innerHTML='🌙 Nuit : taux fixe '+fmt(2000)+' / personne';
+  else if(typeEmp==='Homme'&&hom>0)
+    r3.innerHTML='📐 1 balle → '+(shift==='Nuit'?'417':'389')+' FCFA | '+fmtN(hom)+' balles → <strong>'+fmt(paie)+'</strong>';
+  else r3.style.display='none';
+  const balles=typeEmp==='Femme'?Math.floor(fem/50):hom;
+  document.getElementById('p-balles-preview').textContent=typeEmp==='Femme'?fmtN(balles)+' balles ('+fmtN(fem)+' ÷ 50)':fmtN(hom)+' balles';
+  document.getElementById('p-paie-calc').textContent=fmt(paie);
+  document.getElementById('p-paie-result').style.display='';
+}
+function calcMultiProdPaie() {
+  const checks=document.querySelectorAll('#p-employe-checkboxes input:checked');
+  const nb=checks.length;
+  if(nb<2){document.getElementById('p-paie-result').style.display='none';return;}
+  const shift=shiftVal();
+  const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
+  document.getElementById('p-multi-sachets-grp').style.display='';
+  let paiePar;
+  if(shift==='Nuit'){
+    paiePar=PAIE_FEMMES.nuit.taux;
+  } else {
+    if(!sachets){document.getElementById('p-paie-result').style.display='none';return;}
+    const quota=PAIE_FEMMES.jour.quotas[nb]||(nb*300);
+    paiePar=Math.round((sachets/quota)*PAIE_FEMMES.jour.taux);
+  }
+  const balles=sachets>0?Math.floor(sachets/50):0;
+  document.getElementById('p-balles-preview').textContent=fmtN(balles)+' balles ('+fmtN(sachets)+' ÷ 50)';
+  document.getElementById('p-paie-calc').textContent=fmt(paiePar*nb);
+  document.getElementById('p-paie-result').style.display='';
+  const dl=document.getElementById('p-multi-paie-detail');dl.style.display='';
+  document.getElementById('p-multi-paie-list').innerHTML=[].map.call(checks,c=>
+    '<div style="display:flex;justify-content:space-between;font-size:13px;padding:4px 0;border-bottom:1px solid var(--border)"><span>'+esc(c.value)+'</span><span style="font-weight:600;color:var(--green)">'+fmt(paiePar)+'</span></div>'
+  ).join('');
+}
+
 function prodForm(p) {
-  const e=!!p; const femEmp=D.employes.filter(x=>x.type==='Femme'); const otherEmp=D.employes.filter(x=>x.type!=='Femme');
-  const checked=e?(p.employes||(p.employe?[p.employe]:[])):[];
+  const e=!!p; _prodMode='solo';
+  const empOpts=D.employes.map(x=>`<option value="${x.id}"${e&&p.employes&&p.employes[0]===x.name?' selected':''}>${esc(x.name)}</option>`).join('');
+  const checked=e?(p.employes||[]):[];
   openM(`
     <h3>${e?'✏️ Modifier':'🏭 Nouvelle'} production</h3>
-    <div class="m-row"><div><label>Date</label><input type="date" id="prDate" value="${e?p.date:today()}" /></div>
-    <div><label>Shift</label><select id="prShift"><option value="Jour"${e&&p.shift==='Jour'?' selected':''}>☀️ Jour</option>
+    <div class="m-row"><div><label>Date</label><input type="date" id="p-date" value="${e?p.date:today()}" /></div>
+    <div><label>Shift</label><select id="p-shift" onchange="onProdShiftChange()"><option value="Jour"${e&&p.shift==='Jour'?' selected':''}>☀️ Jour</option>
     <option value="Nuit"${e&&p.shift==='Nuit'?' selected':''}>🌙 Nuit</option></select></div></div>
-    <div id="prEmpSection"></div>
-    <div class="m-row"><div><label>Type</label><select id="prType"><option value="Femme"${e&&p.type==='Femme'?' selected':''}>👩 Femme</option>
-    <option value="Homme"${e&&p.type==='Homme'?' selected':''}>👨 Homme</option></select></div>
-    <div><label>Réalisé <span id="prU">(sachets)</span></label><input type="number" id="prReel" value="${e?p.reel:''}" /></div></div>
-    <div class="m-row"><div><label>Quota</label><input type="number" id="prQuota" value="${e?p.quota:''}" /></div><div><label>💰 Paie</label><input type="number" id="prPaie" value="${e?p.paie:''}" readonly style="font-weight:700;color:var(--accent)" /></div></div>
-    <div id="prCalc" class="calc"></div>
-    <label>Notes</label><textarea id="prNotes">${e?esc(p.notes||''):''}</textarea>
+    <label>Mode de saisie</label>
+    <div style="display:flex;gap:.5rem;margin:.2rem 0">
+      <button type="button" id="btn-mode-solo" onclick="setProdMode('solo')" style="flex:1;padding:.5rem;border-radius:.55rem;font-size:.78rem;font-weight:700;border:2px solid var(--accent);background:linear-gradient(135deg,var(--orange),var(--accent));color:#fff;cursor:pointer">👤 1 Employé</button>
+      <button type="button" id="btn-mode-multi" onclick="setProdMode('multi')" style="flex:1;padding:.5rem;border-radius:.55rem;font-size:.78rem;font-weight:700;border:2px solid var(--border);background:var(--hover);color:var(--text2);cursor:pointer">👥 Équipe (≥ 2)</button>
+    </div>
+
+    <!-- SOLO -->
+    <div id="p-solo-section" style="display:grid;gap:.7rem">
+      <div class="m-row"><div><label>Employé</label><select id="p-employe" onchange="onProdEmployeChange()"><option value="">— Choisir —</option>${empOpts}</select></div>
+      <div id="p-quota-info-grp" style="display:none"><label>Quota attendu</label><div id="p-quota-info" style="padding:.6rem .8rem;background:var(--hover);border-radius:.55rem;font-weight:600;font-size:.82rem">—</div></div></div>
+      <div class="m-row"><div id="p-fem-grp"><label>Sachets produits 👩</label><input type="number" id="p-fem" value="${e&&p.type==='Femme'?p.reel:''}" oninput="calcProdPaie()" /></div>
+      <div id="p-hom-grp" style="display:none"><label>Balles produites 👨</label><input type="number" id="p-hom" value="${e&&p.type==='Homme'?p.reel:''}" oninput="calcProdPaie()" /></div></div>
+    </div>
+
+    <!-- MULTI -->
+    <div id="p-multi-section" style="display:none">
+      <div style="background:var(--hover);border-radius:.55rem;padding:.75rem;font-size:.75rem;color:var(--accent);margin-bottom:.75rem;line-height:1.7">
+        ☀️ Jour : quota <strong>${PAIE_FEMMES.jour.quotas[2]} sachets</strong> pour 2 pers → <strong>1 800 FCFA chacune</strong> (règle de 3)<br>
+        🌙 Nuit : <strong>2 000 FCFA fixe</strong> par personne
+      </div>
+      <div style="margin-bottom:.5rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:.35rem">
+          <label style="font-weight:600;font-size:.8rem">Sélectionner les employées <span style="color:var(--red)">(min. 2)</span></label>
+          <span id="p-multi-count" style="font-size:.7rem;font-weight:700;padding:.15rem .55rem;border-radius:99px;background:var(--hover)">0 sélectionné(s)</span>
+        </div>
+        <div id="p-employe-checkboxes" style="display:flex;flex-direction:column;gap:.3rem;max-height:180px;overflow-y:auto;padding:.5rem;background:var(--hover);border-radius:.55rem"></div>
+      </div>
+      <div id="p-multi-sachets-grp" style="display:none;margin-bottom:.5rem">
+        <label>Sachets totaux produits</label><input type="number" id="p-multi-sachets" oninput="calcMultiProdPaie()" />
+      </div>
+    </div>
+
+    <!-- RÉSULTAT -->
+    <div id="p-paie-result" style="display:none;background:linear-gradient(135deg,#f0fdf4,#dcfce7);border:1.5px solid #86efac;border-radius:.75rem;padding:1rem">
+      <div id="p-paie-regle3" style="display:none;background:#d1fae5;border-radius:.5rem;padding:.55rem .75rem;font-size:.75rem;font-weight:600;margin-bottom:.75rem"></div>
+      <div id="p-quota-block" style="display:none;grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.75rem;text-align:center">
+        <div style="background:#fff;border-radius:.55rem;padding:.5rem;border:1px solid #bbf7d0">
+          <div style="font-size:.62rem;font-weight:600;text-transform:uppercase;margin-bottom:.2rem;color:var(--muted)">Quota attendu</div>
+          <div id="p-quota-attendu" style="font-weight:800;font-size:.9rem">—</div>
+        </div>
+        <div style="background:#fff;border-radius:.55rem;padding:.5rem;border:1px solid #bbf7d0">
+          <div style="font-size:.62rem;font-weight:600;text-transform:uppercase;margin-bottom:.2rem;color:var(--muted)">Réel produit</div>
+          <div id="p-quota-reel" style="font-weight:800;font-size:.9rem">—</div>
+        </div>
+        <div style="background:#fff;border-radius:.55rem;padding:.5rem;border:1px solid #bbf7d0">
+          <div style="font-size:.62rem;font-weight:600;text-transform:uppercase;margin-bottom:.2rem;color:var(--muted)">Écart</div>
+          <div id="p-quota-ecart" style="font-weight:800;font-size:.9rem">—</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:.45rem;font-size:.78rem">
+        <span style="color:var(--muted)">📦 Balles comptabilisées :</span>
+        <span id="p-balles-preview" style="font-weight:700;color:var(--orange);font-size:.85rem">—</span>
+      </div>
+      <div id="p-multi-paie-detail" style="display:none;margin-bottom:.55rem">
+        <div style="font-size:.72rem;font-weight:700;margin-bottom:.35rem;text-transform:uppercase">💳 Paie par employé</div>
+        <div id="p-multi-paie-list" style="display:flex;flex-direction:column;gap:.3rem"></div>
+      </div>
+      <div style="height:1px;background:#86efac;margin-bottom:.55rem"></div>
+      <div style="display:flex;justify-content:space-between;background:#fff;border-radius:.6rem;padding:.6rem .85rem;border:2px solid #4ade80">
+        <span style="font-weight:700">💰 Paie :</span>
+        <span id="p-paie-calc" style="font-size:1.2rem;font-weight:800;color:#15803d">—</span>
+      </div>
+    </div>
+    <label>Notes</label><textarea id="p-notes">${e?esc(p.notes||''):''}</textarea>
     <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
     <button class="btn btn-p" onclick="saveProd(${e?p.id:'null'})">${e?'Modifier':'Enregistrer'}</button></div>
   `);
-  function upd() {
-    const type=val('prType'),sec=document.getElementById('prEmpSection');
-    if(type==='Femme'){
-      sec.innerHTML='<label>Employées</label>'+femEmp.map(x=>`<label style="display:flex;align-items:center;gap:6px;font-weight:400;text-transform:none;font-size:13px;margin-bottom:3px;cursor:pointer"><input type="checkbox" class="prFem" value="${esc(x.name)}"${checked.includes(x.name)?' checked':''}>${esc(x.name)}</label>`).join('');
-      sec.querySelectorAll('.prFem').forEach(cb=>cb.addEventListener('change',calcP));
-    } else {
-      const cur=e&&(p.type==='Homme'||p.type==='Autre')?(p.employes?p.employes[0]:p.employe):'';
-      sec.innerHTML=`<div class="m-row"><div><label>Employé</label><select id="prEmp"><option value="">— Choisir —</option>${otherEmp.map(x=>`<option value="${esc(x.name)}"${cur===x.name?' selected':''}>${esc(x.name)}</option>`).join('')}</select></div><div><label>Manuel</label><input id="prEmpM" value="${cur&&!otherEmp.find(x=>x.name===cur)?esc(cur):''}" /></div></div>`;
-    }
-  }
-  document.getElementById('prType').addEventListener('change',upd);upd();
-  ['prShift','prType','prReel','prQuota'].forEach(id=>{
-    const el=document.getElementById(id);if(el){el.addEventListener('change',calcP);el.addEventListener('input',calcP);}
-  });
-  calcP();
-}
-
-function calcP() {
-  const shift=val('prShift')||'Jour', type=val('prType')||'Femme', reel=num('prReel');
-  const u=document.getElementById('prU'); if(u)u.textContent=type==='Femme'?'(sachets)':'(balles)';
-  const qi=document.getElementById('prQuota'); const pi=document.getElementById('prPaie'); const el=document.getElementById('prCalc');
-  if(!qi||!pi||!el)return;
-  const nbFem=type==='Femme'?document.querySelectorAll('.prFem:checked').length:0;
-  if(type==='Femme'){
-    const defQuota=shift==='Jour'?200*(nbFem||1)+200:null;
-    if(!qi.value||qi.value==='N/A'||qi.dataset.lastNb!==String(nbFem)){qi.value=defQuota?String(defQuota):'N/A';qi.dataset.lastNb=String(nbFem);}
-    if(shift==='Nuit'){
-      const paieTot=2000*(nbFem||1);pi.value=paieTot;
-      el.innerHTML=`<div class="r"><span>🌙 Nuit fixe</span><span class="v">2000 F/personne</span></div>
-      <div class="r"><span>👩 Employées</span><span class="v">${nbFem||1}</span></div>
-      <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie totale</span><span class="v">${paieTot.toLocaleString()} FCFA</span></div>`;
-    } else {
-      const quota=+qi.value||200*(nbFem||1)+200;const taux=1800;
-      const paiePar=quota?Math.round((reel/quota)*taux):0;const paieTot=paiePar*(nbFem||1);const pct=quota?Math.round(reel/quota*100):0;
-      pi.value=paieTot;
-      el.innerHTML=`<div class="r"><span>📋 Taux</span><span class="v">1800 FCFA</span></div>
-      <div class="r"><span>📐 Règle de 3</span><span class="v">${quota} sach → ${taux.toLocaleString()} F</span></div>
-      <div class="r"><span>📦 ${reel}/${quota} sachets</span><span>${pct}%</span></div>
-      <div class="prog"><div class="prog-f" style="width:${Math.min(pct,100)}%"></div></div>
-      <div class="r"><span>💰 Paie / personne</span><span class="v">${paiePar.toLocaleString()} FCFA</span></div>
-      <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie totale (${nbFem||1} pers)</span><span class="v">${paieTot.toLocaleString()} FCFA</span></div>`;
-    }
+  if(e){
+    if(p.type==='Femme'){document.getElementById('p-fem').value=p.reel;calcProdPaie();}
+    else{document.getElementById('p-hom-grp').style.display='';document.getElementById('p-hom').value=p.reel;onProdEmployeChange();}
   } else {
-    if(!qi.value)qi.value='6';const quota=+qi.value||6;const taux=shift==='Jour'?389:417;const paie=reel*taux;const pct=quota?Math.round(reel/quota*100):0;
-    pi.value=paie;
-    el.innerHTML=`<div class="r"><span>💰 Taux</span><span class="v">${taux.toLocaleString()} F/balle</span></div>
-    <div class="r"><span>🎯 ${reel}/${quota} balles</span><span>${pct}%</span></div>
-    <div class="prog"><div class="prog-f" style="width:${Math.min(pct,100)}%"></div></div>
-    <div class="r" style="font-size:15px;color:var(--accent)"><span>💰 Paie</span><span class="v">${paie.toLocaleString()} FCFA</span></div>`;
+    renderEmpCheckboxes();onProdEmployeChange();
   }
 }
 
 function saveProd(id) {
-  const date=val('prDate'), shift=val('prShift'), type=val('prType');
-  let employes;
-  if(type==='Femme'){
-    const cbs=document.querySelectorAll('.prFem:checked');
-    employes=[].map.call(cbs,c=>c.value);
-    if(!employes.length)return alert('Sélectionnez au moins une employée');
-  } else {
-    const emp=val('prEmp')||val('prEmpM').trim()||'Employé';
-    employes=[emp];
+  const date=val('p-date'), shift=shiftVal();
+  if(!date)return alert('Date requise');
+  if(_prodMode==='multi'){
+    const checks=document.querySelectorAll('#p-employe-checkboxes input:checked');
+    if(checks.length<2)return alert('Sélectionnez au moins 2 employées');
+    const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
+    const notes=val('p-notes').trim();
+    let paiePar;
+    if(shift==='Nuit') paiePar=PAIE_FEMMES.nuit.taux;
+    else {const quota=PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300);if(!sachets)return alert('Nombre de sachets requis');paiePar=Math.round((sachets/quota)*PAIE_FEMMES.jour.taux);}
+    const balles=sachets>0?Math.floor(sachets/50):0;
+    const noms=[].map.call(checks,c=>c.value).join(', ');
+    [].forEach.call(checks,emp=>{
+      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:sachets,quota:PAIE_FEMMES.jour.quotas[checks.length]||0,paie:paiePar,notes:notes||'Équipe: '+noms,createdBy:me()});
+    });
+    if(balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production équipe '+sachets+' sachets',createdBy:me()});
+    closeM();save();render();return;
   }
-  const reel=num('prReel'), quota=type==='Femme'?num('prQuota')||0:(num('prQuota')||6);
-  const notes=val('prNotes').trim();
-  let paie;
-  if(type==='Femme'){
-    const nb=employes.length;
-    if(shift==='Nuit')paie=2000*nb;
-    else{const q=quota||200*(nb||1)+200;paie=Math.round((reel/q)*1800)*nb;}
-  } else paie=reel*(shift==='Jour'?389:417);
-  if(reel<=0)return alert('Production invalide');
-  if(id){const p=D.productions.find(x=>x.id===id);if(p){const oldBles=Math.floor(p.reel/50);const newBles=Math.floor(reel/50);Object.assign(p,{date,shift,employes,type,reel,quota,paie,notes});if(type==='Femme'&&newBles!==oldBles){const d=newBles-oldBles;if(d>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:d,unite:'pièce',cout:0,desc:'Ajustement production '+reel+' sachets',createdBy:me()});else D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:-d,unite:'pièce',desc:'Ajustement production '+reel+' sachets',createdBy:me()});}}}
+  const empId=val('p-employe')||null;
+  const emp=empId?D.employes.find(e=>e.id===+empId):null;
+  if(!emp)return alert('Choisissez un employé');
+  const typeEmp=emp.type;
+  const fem=parseFloat(document.getElementById('p-fem').value)||0;
+  const hom=parseFloat(document.getElementById('p-hom').value)||0;
+  if(!fem&&!hom)return alert('Production requise');
+  const reel=typeEmp==='Femme'?fem:hom;
+  const paie=calcPaieFromProd(typeEmp,fem,hom,shift,1);
+  const balles=typeEmp==='Femme'?Math.floor(fem/50):hom;
+  if(id){const p=D.productions.find(x=>x.id===id);if(p){Object.assign(p,{date,shift,employes:[emp.name],type:typeEmp,reel,quota:getQuotaAttendu(typeEmp,shift,1)||0,paie,notes:val('p-notes').trim()});}}
   else {
-    D.productions.push({id:nextId++,date,shift,employes,type,reel,quota,paie,notes,createdBy:me()});
-    if(type==='Femme'){const bles=Math.floor(reel/50);if(bles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:bles,unite:'pièce',cout:0,desc:'Production '+reel+' sachets',createdBy:me()});}
+    D.productions.push({id:nextId++,date,shift,employes:[emp.name],type:typeEmp,reel,quota:getQuotaAttendu(typeEmp,shift,1)||0,paie,notes:val('p-notes').trim(),createdBy:me()});
+    if(typeEmp==='Femme'&&balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production '+fem+' sachets',createdBy:me()});
   }
   closeM();save();render();
 }
@@ -850,45 +1026,88 @@ function weekRange(w,y){const d=new Date(y,0,1+((w-1)*7));d.setDate(d.getDate()+
 let curWeek=0, curYear=0;
 
 function prodHTML() {
-  if(!curWeek){const n=new Date();curWeek=getWeek(n);curYear=n.getFullYear();}
-  const wStart=weekRange(curWeek,curYear);wStart.setHours(0,0,0,0);
-  const wEnd=new Date(wStart);wEnd.setDate(wEnd.getDate()+6);
-  const fmtD=d=>d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
-  const prods=D.productions.filter(p=>{
-    const d=new Date(p.date);return d>=wStart&&d<=wEnd;
-  });
-  const empPaie={};
-  prods.forEach(p=>{const emps=prodEmps(p),s=p.type==='Femme'?Math.round(p.paie/emps.length):p.paie;emps.forEach(n=>{empPaie[n]=(empPaie[n]||0)+s;});});
-  const stats=prods.reduce((a,p)=>{a.paie+=p.paie;if(p.type==='Femme')a.sachets+=p.reel;return a;},{paie:0,sachets:0});
-  const balles=Math.floor(stats.sachets/50);
+  const totF=D.productions.reduce((s,p)=>s+(p.type==='Femme'?p.reel:0),0);
+  const totH=D.productions.reduce((s,p)=>s+(p.type==='Homme'?p.reel:0),0);
+  const totBalles=Math.floor(totF/50);
+  const totPaie=D.productions.reduce((s,p)=>s+p.paie,0);
 
-  return `<h1>🏭 Production</h1><p class="desc">Semaine du ${fmtD(wStart)} au ${fmtD(wEnd)}</p>
-  <div class="week-nav">
-    <button onclick="curWeek--;if(curWeek<1){curWeek=52;curYear--}render()">←</button>
-    <div><div class="wn-label">Semaine ${curWeek} — ${curYear}</div><div class="wn-sub">${fmtD(wStart)} → ${fmtD(wEnd)}</div></div>
-    <button onclick="curWeek++;if(curWeek>52){curWeek=1;curYear++}render()">→</button>
-    <button onclick="{const n=new Date();curWeek=getWeek(n);curYear=n.getFullYear();render()}">📅 Aujourd'hui</button>
-    <span class="sp"></span><button class="btn btn-p" onclick="prodForm()">+ Ajouter</button>
+  const prodsFiltered=getProdsFiltered();
+  const moisCourant=new Date().toISOString().slice(0,7);
+  const byEmp={};
+  prodsFiltered.forEach(p=>{
+    const n=p.employes&&p.employes[0]||'—';
+    if(!byEmp[n])byEmp[n]={nom:n,typeEmp:p.type,totFem:0,totHom:0,totB:0,totPaie:0,moisPaie:0,totQuota:0,nbJours:0};
+    const r=byEmp[n];
+    if(p.type==='Femme')r.totFem+=p.reel;else r.totHom+=p.reel;
+    r.totB+=p.type==='Femme'?Math.floor(p.reel/50):p.reel;
+    r.totPaie+=p.paie;r.nbJours+=1;
+    if(p.date&&p.date.slice(0,7)===moisCourant)r.moisPaie+=p.paie;
+    const q=getQuotaAttendu(p.type,p.shift,1);
+    if(q)r.totQuota+=q;
+  });
+  const empRows=Object.values(byEmp).filter(e=>e.nom!=='—').sort((a,b)=>b.totPaie-a.totPaie);
+
+  const filterLabel=_prodFilter==='today'?"Aujourd'hui":_prodFilter==='week'?'Cette semaine':'Tout';
+
+  return `<h1>🏭 Production</h1><p class="desc">${filterLabel}</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr">
+    <div class="card tc"><div class="big" style="color:#1d4ed8">${fmtN(totF)}</div><div class="lbl">👩 Sachets femmes</div></div>
+    <div class="card tc"><div class="big" style="color:#0e7490">${fmtN(totH)}</div><div class="lbl">👨 Balles hommes</div></div>
+    <div class="card tc"><div class="big" style="color:#b45309">${fmtN(totBalles)}</div><div class="lbl">📦 Balles totales</div></div>
+    <div class="card tc accent"><div class="big">${fmt(totPaie)}</div><div class="lbl">💰 Total paies</div></div>
   </div>
-  <div class="grid">
-    <div class="card accent"><div class="big">${balles}</div><div class="lbl">🏀 Balles produites</div></div>
-    <div class="card"><div class="big">${stats.sachets}</div><div class="lbl">📦 Sachets (femmes)</div></div>
-    <div class="card"><div class="big" style="color:var(--green)">${fmt(stats.paie)}</div><div class="lbl">💰 Paies semaine</div></div>
-    <div class="card"><div class="big">${prods.length}</div><div class="lbl">📋 Entrées total</div></div>
+
+  <!-- Filtre -->
+  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap">
+    <span style="font-size:.78rem;font-weight:700;color:var(--muted)">Afficher :</span>
+    ${['today','week','all'].map(f=>`<button onclick="setProdFilter('${f}')" style="font-size:.72rem;font-weight:600;padding:.3rem .75rem;border-radius:.5rem;border:none;cursor:pointer;background:${_prodFilter===f?'linear-gradient(135deg,var(--orange),var(--accent))':'var(--hover)'};color:${_prodFilter===f?'#fff':'var(--text2)'}">${f==='today'?'📅 Aujourd\'hui':f==='week'?'📆 Cette semaine':'🗂️ Tout'}</button>`).join('')}
   </div>
-  ${Object.keys(empPaie).length?`<div class="card mb-12"><h2>💳 Paies par employé</h2>${Object.entries(empPaie).map(([name,paie])=>`
-    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:13px">
-      <span>${esc(name)}</span><span style="font-weight:600">${fmt(paie)}</span></div>`).join('')}</div>`:''}
-  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Employé</th><th>Shift</th><th>Type</th><th>Quota</th><th>Réel</th><th>🏀 Balles</th><th>Écart</th><th>💰 Paie</th><th></th></tr></thead>
-  <tbody>${prods.length?[...prods].sort((a,b)=>b.date.localeCompare(a.date)).map(p=>{
-    const ec=p.reel-p.quota;
-    return `<tr><td>${esc(p.date)}</td><td>${esc(prodEmps(p).join(', '))}</td><td><span class="badge ${p.shift==='Jour'?'bg-y':'bg-b'}">${esc(p.shift)}</span></td>
-    <td><span class="badge ${p.type==='Femme'?'bg-k':'bg-b'}">${esc(p.type)}</span></td><td>${esc(p.quota)}</td>
-    <td style="font-weight:600">${esc(p.reel)}</td><td>${p.type==='Femme'?Math.floor(p.reel/50):'—'}</td><td style="color:${ec>=0?'var(--green)':'var(--red)'}">${ec>=0?'+':''}${ec}</td>
-    <td style="font-weight:600;color:var(--accent)">${fmt(p.paie)}</td>
+
+  <!-- Paies par employé -->
+  <div class="card mb-12"><h2 style="font-size:14px">💳 Paies par employé <span style="font-size:.65rem;color:var(--muted);margin-left:8px">${empRows.length} employé(s) — ${filterLabel}</span></h2>
+  <div class="table-wrap"><table><thead><tr><th>Employé</th><th>Type</th><th class="tr">Prod.</th><th class="tr">Quota</th><th class="tr">Écart</th><th class="tr">🏀 Balles</th><th class="tr">💰 Paie mois</th><th class="tr">💰 Total</th></tr></thead>
+  <tbody>${empRows.length?empRows.map(e=>{
+    const reel=e.typeEmp==='Femme'?e.totFem:e.totHom;
+    const unite=e.typeEmp==='Femme'?'sach':'bal';
+    const ecart=reel-(e.totQuota||0);
+    const ecTxt=e.totQuota?ecart>0?'<span style="color:var(--green)">+'+fmtN(ecart)+'</span>':ecart<0?'<span style="color:var(--red)">'+fmtN(ecart)+'</span>':'<span style="color:var(--green)">= 0</span>':'<span style="color:var(--muted)">—</span>';
+    return `<tr><td style="font-weight:600">${esc(e.nom)}</td>
+    <td><span class="badge ${e.typeEmp==='Femme'?'bg-k':'bg-b'}">${esc(e.typeEmp)}</span></td>
+    <td class="tr">${fmtN(reel)} ${unite}</td>
+    <td class="tr" style="color:var(--muted)">${e.totQuota?fmtN(e.totQuota)+' '+unite:'—'}</td>
+    <td class="tr">${ecTxt}</td>
+    <td class="tr"><b style="color:var(--orange)">${fmtN(e.totB)}</b></td>
+    <td class="tr"><b style="color:#059669">${fmt(e.moisPaie)}</b></td>
+    <td class="tr"><b style="color:#7c3aed">${fmt(e.totPaie)}</b></td></tr>`;
+  }).join(''):'<tr><td colspan="8" class="empty">Aucune production</td></tr>'}</tbody></table></div></div>
+
+  <!-- Détail journalier -->
+  <div class="card"><h2 style="font-size:14px">📋 Détail journalier — Quota vs Réel vs Paie</h2>
+  <div class="toolbar" style="margin-bottom:8px"><button class="btn btn-p btn-sm" onclick="prodForm()">+ Ajouter production</button></div>
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Employé</th><th class="tc">Shift</th><th class="tr">Quota</th><th class="tr">Réel</th><th class="tr">Écart</th><th class="tr">🏀 Balles</th><th class="tr">💰 Paie</th><th></th></tr></thead>
+  <tbody>${prodsFiltered.length?[...prodsFiltered].sort((a,b)=>b.date.localeCompare(a.date)).map(p=>{
+    const q=getQuotaAttendu(p.type,p.shift,1);
+    const reel=p.reel;
+    const ec=reel-(q||0);
+    const ecTxt=q!==null?ec>0?'<span style="color:var(--green)">+'+fmtN(ec)+'</span>':ec<0?'<span style="color:var(--red)">'+fmtN(ec)+'</span>':'<span style="color:var(--green)">✓</span>':'<span style="color:var(--muted)">—</span>';
+    const balles=p.type==='Femme'?Math.floor(p.reel/50):p.reel;
+    return `<tr><td>${esc(p.date)}</td><td style="font-weight:600">${esc(p.employes?p.employes.join(', '):'')}</td>
+    <td class="tc"><span class="badge ${p.shift==='Jour'?'bg-y':'bg-b'}">${esc(p.shift)}</span></td>
+    <td class="tr" style="color:var(--muted)">${q!==null?fmtN(q)+(p.type==='Femme'?' sach':' bal'):'—'}</td>
+    <td class="tr" style="color:${p.type==='Femme'?'#db2777':'#2563eb'};font-weight:600">${fmtN(reel)} ${p.type==='Femme'?'sach':'bal'}</td>
+    <td class="tr">${ecTxt}</td>
+    <td class="tr"><b style="color:var(--orange)">${fmtN(balles)}</b></td>
+    <td class="tr"><b style="color:#059669">${fmt(p.paie)}</b></td>
     <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cette production?','productions',D.productions.find(x=>x.id===${p.id}))"><i class="ti ti-trash"></i></button></td></tr>`;
-  }).join(''):'<tr><td colspan="10" class="empty">Aucune production cette semaine</td></tr>'}</tbody></table></div>`;
+  }).join(''):'<tr><td colspan="9" class="empty">Aucune production</td></tr>'}</tbody></table></div></div>`;
 }
+function getProdsFiltered() {
+  const now=new Date(), todayStr=today();
+  const day=now.getDay();const mon=new Date(now);mon.setDate(now.getDate()-(day===0?6:day-1));mon.setHours(0,0,0,0);
+  const monStr=mon.toISOString().slice(0,10);
+  return D.productions.filter(p=>{if(_prodFilter==='today')return p.date===todayStr;if(_prodFilter==='week')return p.date>=monStr;return true;});
+}
+function setProdFilter(f){_prodFilter=f;render();}
 
 function montantsHTML() {
   const mList=D.montants.filter(m=>inRange(m.date));
