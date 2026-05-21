@@ -675,7 +675,19 @@ function saveMontant(id) {
   const mt=num('mMt'); if(!mt)return alert('Montant requis');
   const type=val('mType'), client=val('mClient');
   if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=type;m.client=client;}}
-  else D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client,createdBy:me()});
+  else {
+    D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client,createdBy:me()});
+    if(type==='Dette reçue'&&client){
+      const cmds=D.commandes.filter(x=>x.client===client&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
+      let left=mt;
+      for(const cmd of cmds){
+        if(left<=0)break;
+        const pay=Math.min(left,cmd.reste);
+        cmd.paye+=pay; cmd.reste=cmd.prixTotal-cmd.paye; left-=pay;
+        if(cmd.reste<=0)cmd.statut='Livrée';
+      }
+    }
+  }
   closeM();save();render();
 }
 function recalcDebts() {
@@ -1033,18 +1045,68 @@ function dashCharts() {
 }
 
 function clientsHTML() {
-  return `<h1>👥 Clients & Dettes</h1><p class="desc">Suivi des clients et dettes</p>
+  return `<h1>👥 Clients & Dettes</h1><p class="desc">Suivi des clients — dettes et progression des paiements</p>
   <div class="toolbar"><button class="btn btn-p" onclick="clientForm()">+ Ajouter</button></div>
-  <div class="table-wrap"><table><thead><tr><th>Client</th><th>Tél</th><th>Dette init.</th><th>Dette actuelle</th><th>Progression</th><th>Actions</th></tr></thead>
+  <div class="table-wrap"><table><thead><tr><th>Client</th><th>📞 Contact</th><th>💳 Dette</th><th>📊 Progression</th><th>📦 Commandes</th><th></th></tr></thead>
   <tbody>${D.clients.length?D.clients.map(c=>{
-    const pct=c.detteInit?Math.round(((c.detteInit-(c.detteCur||0))/c.detteInit)*100):0;
-    return `<tr><td><strong>${esc(c.name)}</strong></td><td>${esc(c.phone||'—')}</td><td>${fmt(c.detteInit)}</td>
-    <td style="color:${(c.detteCur||0)>0?'var(--red)':'var(--green)'}">${fmt(c.detteCur||0)}</td>
-    <td><div class="prog" style="width:80px;display:inline-block;vertical-align:middle;margin-right:6px"><div class="prog-f" style="width:${pct}%;background:${pct>=100?'var(--green)':'var(--amber)'}"></div></div>${pct}%</td>
-    <td class="gap-4"><button class="btn btn-sm btn-gh" onclick="clientForm(D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
-    <button class="btn btn-sm btn-g" onclick="payerDette(${c.id})"><i class="ti ti-cash"></i></button>
-    <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce client?','clients',D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button></td></tr>`;
+    const cmds=D.commandes.filter(x=>x.client===c.name);
+    const pending=cmds.filter(x=>x.reste>0);
+    const totalCmd=cmds.reduce((s,x)=>s+x.prixTotal,0);
+    const payeCmd=cmds.reduce((s,x)=>s+x.paye,0);
+    const pctPaye=totalCmd>0?Math.round((payeCmd/totalCmd)*100):0;
+    const pctDette=c.detteInit>0?Math.round(((c.detteInit-(c.detteCur||0))/c.detteInit)*100):(c.detteCur>0?0:100);
+    return `<tr><td><strong>${esc(c.name)}</strong>${c.phone?`<br><span class="fs">${esc(c.phone)}</span>`:''}</td>
+    <td>${esc(c.phone||'—')}</td>
+    <td style="color:${(c.detteCur||0)>0?'var(--red)':'var(--green)'}">
+      <strong>${fmt(c.detteCur||0)}</strong>
+      ${c.detteInit>0?`<br><span class="fs">Init: ${fmt(c.detteInit)}</span>`:''}
+    </td>
+    <td style="min-width:120px">
+      ${c.detteInit>0?`<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><span class="fs">Dette</span><div class="prog" style="flex:1"><div class="prog-f" style="width:${pctDette}%;background:${pctDette>=100?'var(--green)':'var(--amber)'}"></div></div><span class="fs">${pctDette}%</span></div>`:''}
+      ${totalCmd>0?`<div style="display:flex;align-items:center;gap:4px"><span class="fs">Commandes</span><div class="prog" style="flex:1"><div class="prog-f" style="width:${pctPaye}%;background:linear-gradient(90deg,var(--accent),#a78bfa)"></div></div><span class="fs">${pctPaye}%</span></div>`:''}
+    </td>
+    <td>${pending.length?`<span style="color:var(--red);font-weight:600">${pending.length} en attente<br>${fmt(pending.reduce((s,x)=>s+x.reste,0))}</span>`:'<span style="color:var(--green)">✓ Aucune</span>'}</td>
+    <td class="gap-4">
+      <button class="btn btn-sm btn-gh" onclick="clientDetail(D.clients.find(x=>x.id===${c.id}))" title="Détails"><i class="ti ti-info-circle"></i></button>
+      <button class="btn btn-sm btn-gh" onclick="clientForm(D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
+      <button class="btn btn-sm btn-g" onclick="payerDette(${c.id})"><i class="ti ti-cash"></i></button>
+      <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce client?','clients',D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button>
+    </td></tr>`;
   }).join(''):'<tr><td colspan="6" class="empty">Aucun client</td></tr>'}</tbody></table></div>`;
+}
+
+function clientDetail(c) {
+  if(!c)return;
+  const cmds=D.commandes.filter(x=>x.client===c.name).sort((a,b)=>b.date.localeCompare(a.date));
+  const mts=D.montants.filter(x=>x.client===c.name).sort((a,b)=>b.date.localeCompare(a.date));
+  const totalCmd=cmds.reduce((s,x)=>s+x.prixTotal,0);
+  const payeCmd=cmds.reduce((s,x)=>s+x.paye,0);
+  const detteMts=mts.filter(x=>x.type==='Dette reçue').reduce((s,x)=>s+x.montant,0);
+  openM(`
+    <h3>👤 ${esc(c.name)}</h3>
+    <div style="font-size:.78rem;color:var(--muted);margin-bottom:.75rem">
+      ${c.phone?`📞 ${esc(c.phone)}<br>`:''}${c.addr?`📍 ${esc(c.addr)}<br>`:''}
+      Créé par ${esc(c.createdBy||'—')}
+    </div>
+    <div class="grid" style="grid-template-columns:1fr 1fr 1fr;gap:.5rem;margin-bottom:.75rem">
+      <div class="card tc" style="padding:.5rem"><div class="big" style="font-size:16px;color:var(--red)">${fmt(c.detteInit)}</div><div class="lbl" style="font-size:9px">Dette initiale</div></div>
+      <div class="card tc" style="padding:.5rem"><div class="big" style="font-size:16px;color:var(--accent)">${fmt(totalCmd)}</div><div class="lbl" style="font-size:9px">Total commandes</div></div>
+      <div class="card tc" style="padding:.5rem"><div class="big" style="font-size:16px;color:${(c.detteCur||0)>0?'var(--red)':'var(--green)'}">${fmt(c.detteCur||0)}</div><div class="lbl" style="font-size:9px">Dette actuelle</div></div>
+    </div>
+    <div style="font-size:.8rem;font-weight:600;margin-bottom:.4rem">📦 Commandes (${cmds.length})</div>
+    ${cmds.length?`<div class="table-wrap" style="margin-bottom:.75rem"><table><thead><tr><th>Date</th><th>Produit</th><th>Total</th><th>✅ Payé</th><th>⏳ Reste</th></tr></thead>
+    <tbody>${cmds.map(cmd=>`<tr><td>${esc(cmd.date)}</td><td>${esc(cmd.produit)}</td><td>${fmt(cmd.prixTotal)}</td>
+    <td style="color:var(--green)">${fmt(cmd.paye)}</td><td style="color:${cmd.reste>0?'var(--red)':'var(--green)'}">${fmt(cmd.reste)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty" style="margin-bottom:.75rem">Aucune commande</div>'}
+    <div style="font-size:.8rem;font-weight:600;margin-bottom:.4rem">💰 Paiements reçus (${mts.length})</div>
+    ${mts.length?`<div class="table-wrap" style="margin-bottom:.75rem"><table><thead><tr><th>Date</th><th>Montant</th><th>Type</th><th>Description</th></tr></thead>
+    <tbody>${mts.map(m=>`<tr><td>${esc(m.date)}</td><td style="font-weight:600;color:${m.type==='Dette reçue'?'var(--green)':'var(--accent)'}">${fmt(m.montant)}</td>
+    <td><span class="badge ${m.type==='Dette reçue'?'bg-g':'bg-b'}">${esc(m.type)}</span></td>
+    <td>${esc(m.desc||'')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty" style="margin-bottom:.75rem">Aucun paiement</div>'}
+    <div style="background:var(--hover);border-radius:.55rem;padding:.6rem .75rem;font-size:.78rem">
+      <strong>🧮 Calcul dette :</strong> ${fmt(c.detteInit)} (init) + ${fmt(totalCmd)} (commandes) − ${fmt(detteMts)} (reçus) = <strong style="color:${(c.detteCur||0)>0?'var(--red)':'var(--green)'}">${fmt(c.detteCur||0)}</strong>
+    </div>
+    <div class="m-actions" style="margin-top:.75rem"><button class="btn btn-o" onclick="closeM()">Fermer</button></div>
+  `);
 }
 
 function commandesHTML() {
