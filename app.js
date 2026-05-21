@@ -181,7 +181,7 @@ function nav(p) {
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active',el.id==='p-'+p));
   document.querySelectorAll('.mobile-nav a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
-  const labels={'dash':'📊 Tableau de Bord','clients':'👥 Clients','commandes':'🛒 Commandes','prod':'🏭 Production','montants':'💰 Montants','depenses':'💸 Dépenses','stock':'📦 Stock','finances':'📈 Finances','analyses':'🧠 Analyses','employes':'👷 Employés','exporter':'📥 Exporter','corbeille':'🗑️ Corbeille'};
+  const labels={'dash':'📊 Tableau de Bord','dettes':'🏦 Dettes','clients':'👥 Clients','commandes':'🛒 Commandes','prod':'🏭 Production','montants':'💰 Montants','depenses':'💸 Dépenses','stock':'📦 Stock','finances':'📈 Finances','analyses':'🧠 Analyses','employes':'👷 Employés','exporter':'📥 Exporter','corbeille':'🗑️ Corbeille'};
   const pt=document.getElementById('pageTitleMob');
   if(pt)pt.textContent=labels[p]||p;
   closeNav();
@@ -192,7 +192,7 @@ document.addEventListener('click',function(e){const mn=document.getElementById('
 
 function renderTabs() {
   const items = [
-    ['dash','📊','Tableau de Bord'],['clients','👥','Clients'],['commandes','🛒','Commandes'],
+    ['dash','📊','Tableau de Bord'],['dettes','🏦','Dettes'],['clients','👥','Clients'],['commandes','🛒','Commandes'],
     ['prod','🏭','Production'],['montants','💰','Montants'],['depenses','💸','Dépenses'],
     ['stock','📦','Stock'],['finances','📈','Finances'],['analyses','🧠','Analyses'],
     ['employes','👷','Employés'],['exporter','📥','Exporter'],['corbeille','🗑️','Corbeille']
@@ -971,6 +971,7 @@ function render() {
   document.getElementById('p-analyses').innerHTML = analysesHTML();
   document.getElementById('p-employes').innerHTML = employesHTML();
   document.getElementById('p-exporter').innerHTML = exporterHTML();
+  document.getElementById('p-dettes').innerHTML = dettesHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI();
   } catch(e){console.error('Render error',e);}
@@ -1024,7 +1025,7 @@ function dashHTML() {
       <span style="font-weight:700;color:var(--red);font-size:13px">${fmt(d.detteCur)}</span>
     </div>`;
   }).join('')}</div>
-  <div style="margin-top:8px;text-align:right"><a class="fs" onclick="nav('clients');render()" style="cursor:pointer;color:var(--accent)">→ Voir tous les clients</a></div></div>`:''}
+  <div style="margin-top:8px;text-align:right"><a class="fs" onclick="nav('dettes');render()" style="cursor:pointer;color:var(--accent)">→ Voir tous les débiteurs</a></div></div>`:''}
   <div class="card"><h2>🏭 Dernières productions</h2>${prods.length?prods.map(p=>`
     <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px">
       <span>${esc(p.date)} · ${esc(prodEmps(p).join(', '))}</span>
@@ -1056,24 +1057,10 @@ function dashCharts() {
 }
 
 function clientsHTML() {
-  const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0);
-  const totalDette=debiteurs.reduce((s,c)=>s+(c.detteCur||0),0);
-  const sorted=[...D.clients].sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
-  return `<h1>👥 Clients & Dettes</h1>
-  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
-    <div class="card tc"><div class="big">${D.clients.length}</div><div class="lbl">👥 Total clients</div></div>
-    <div class="card tc"><div class="big" style="color:var(--red)">${debiteurs.length}</div><div class="lbl">🔴 Ont une dette</div></div>
-    <div class="card tc"><div class="big" style="color:var(--red);font-weight:800">${fmt(totalDette)}</div><div class="lbl">🏦 Total dû</div></div>
-  </div>
+  return `<h1>👥 Clients</h1><p class="desc">Liste des clients</p>
   <div class="toolbar"><button class="btn btn-p" onclick="clientForm()">+ Ajouter</button></div>
-  <div class="table-wrap"><table><thead><tr><th>Client</th><th>📞 Contact</th><th>💳 Dette</th><th>📊 Progression</th><th>📦 Commandes</th><th></th></tr></thead>
-  <tbody>${sorted.length?sorted.map(c=>{
-    const cmds=D.commandes.filter(x=>x.client===c.name);
-    const pending=cmds.filter(x=>x.reste>0);
-    const totalCmd=cmds.reduce((s,x)=>s+x.prixTotal,0);
-    const payeCmd=cmds.reduce((s,x)=>s+x.paye,0);
-    const pctPaye=totalCmd>0?Math.round((payeCmd/totalCmd)*100):0;
-    const pctDette=c.detteInit>0?Math.round(((c.detteInit-(c.detteCur||0))/c.detteInit)*100):(c.detteCur>0?0:100);
+  <div class="table-wrap"><table><thead><tr><th>Client</th><th>📞 Contact</th><th>💳 Dette</th><th></th></tr></thead>
+  <tbody>${D.clients.length?D.clients.sort((a,b)=>((b.detteCur||0)-a.detteCur||0)).map(c=>{
     return `<tr${(c.detteCur||0)>0?' style="background:rgba(239,68,68,0.04);border-left:3px solid var(--red)"':''}>
     <td><strong>${esc(c.name)}</strong>${c.phone?`<br><span class="fs">${esc(c.phone)}</span>`:''}</td>
     <td>${esc(c.phone||'—')}</td>
@@ -1082,18 +1069,51 @@ function clientsHTML() {
       ${(c.detteCur||0)>0?` <span class="badge bg-r">À payer</span>`:''}
       ${c.detteInit>0?`<br><span class="fs">Init: ${fmt(c.detteInit)}</span>`:''}
     </td>
-    <td style="min-width:120px">
-      ${c.detteInit>0?`<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><span class="fs">Dette</span><div class="prog" style="flex:1"><div class="prog-f" style="width:${pctDette}%;background:${pctDette>=100?'var(--green)':'var(--amber)'}"></div></div><span class="fs">${pctDette}%</span></div>`:''}
-      ${totalCmd>0?`<div style="display:flex;align-items:center;gap:4px"><span class="fs">Commandes</span><div class="prog" style="flex:1"><div class="prog-f" style="width:${pctPaye}%;background:linear-gradient(90deg,var(--accent),#a78bfa)"></div></div><span class="fs">${pctPaye}%</span></div>`:''}
-    </td>
-    <td>${pending.length?`<span style="color:var(--red);font-weight:600">${pending.length} en attente<br>${fmt(pending.reduce((s,x)=>s+x.reste,0))}</span>`:'<span style="color:var(--green)">✓ Aucune</span>'}</td>
     <td class="gap-4">
       <button class="btn btn-sm btn-gh" onclick="clientDetail(D.clients.find(x=>x.id===${c.id}))" title="Détails"><i class="ti ti-info-circle"></i></button>
       <button class="btn btn-sm btn-gh" onclick="clientForm(D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
       <button class="btn btn-sm btn-g" onclick="payerDette(${c.id})"><i class="ti ti-cash"></i></button>
       <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce client?','clients',D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button>
     </td></tr>`;
-  }).join(''):'<tr><td colspan="6" class="empty">Aucun client</td></tr>'}</tbody></table></div>`;
+  }).join(''):'<tr><td colspan="4" class="empty">Aucun client</td></tr>'}</tbody></table></div>`;
+}
+
+function dettesHTML() {
+  const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0).sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
+  const totalDette=debiteurs.reduce((s,c)=>s+(c.detteCur||0),0);
+  return `<h1>🏦 Cadran des Dettes</h1>
+  <p class="desc">Tous les clients qui doivent de l'argent à l'entreprise</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
+    <div class="card tc" style="border:2px solid var(--red)"><div class="big" style="color:var(--red);font-size:2.2rem">${debiteurs.length}</div><div class="lbl">Débiteurs</div></div>
+    <div class="card tc" style="border:2px solid var(--red)"><div class="big" style="color:var(--red);font-size:2.2rem;font-weight:800">${fmt(totalDette)}</div><div class="lbl">Total dû</div></div>
+  </div>
+  ${debiteurs.length?`<div class="table-wrap"><table><thead><tr><th>#</th><th>Client</th><th>📞 Contact</th><th style="text-align:right">💳 Montant dû</th><th></th></tr></thead>
+  <tbody>${debiteurs.map((c,i)=>{
+    const pct=totalDette>0?Math.round(((c.detteCur||0)/totalDette)*100):0;
+    return `<tr>
+      <td>${i+1}</td>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(c.phone||'—')}</td>
+      <td style="text-align:right">
+        <span style="color:var(--red);font-weight:700;font-size:15px">${fmt(c.detteCur)}</span>
+        <span class="badge bg-r" style="margin-left:6px">${pct}%</span>
+      </td>
+      <td class="gap-4">
+        <button class="btn btn-sm btn-gh" onclick="clientDetail(D.clients.find(x=>x.id===${c.id}))" title="Détails"><i class="ti ti-info-circle"></i></button>
+        <button class="btn btn-sm btn-g" onclick="payerDette(${c.id})"><i class="ti ti-cash"></i></button>
+      </td></tr>`;
+  }).join('')}</tbody></table></div>
+  <div style="margin-top:12px;display:grid;gap:6px">${debiteurs.map(c=>{
+    const pct=totalDette>0?Math.round(((c.detteCur||0)/totalDette)*100):0;
+    return `<div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:2px">
+      <span>${esc(c.name)}</span><span style="font-weight:600;color:var(--red)">${fmt(c.detteCur)}</span>
+    </div>
+    <div class="prog" style="height:22px;background:var(--th-bg);border-radius:var(--radius)">
+      <div class="prog-f" style="width:${pct}%;background:linear-gradient(90deg,var(--red),#f87171);height:100%;border-radius:var(--radius);display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;min-width:fit-content">
+        <span style="color:#fff;font-size:10px;font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.3)">${pct}%</span>
+      </div>
+    </div></div>`;
+  }).join('')}</div>`:'<div class="empty"><br>Aucun débiteur 🎉</div>'}`;
 }
 
 function clientDetail(c) {
@@ -1482,6 +1502,7 @@ loadSB().then(()=>{
   document.getElementById('p-analyses').innerHTML = analysesHTML();
   document.getElementById('p-employes').innerHTML = employesHTML();
   document.getElementById('p-exporter').innerHTML = exporterHTML();
+  document.getElementById('p-dettes').innerHTML = dettesHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI(); checkStorageSize();
   seedEmployees();
