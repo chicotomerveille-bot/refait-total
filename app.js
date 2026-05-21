@@ -920,16 +920,19 @@ function depensesHTML() {
 
 function stockHTML() {
   const cur={}; STK.forEach(c=>cur[c]=0);
-  D.stockE.forEach(e=>{cur[e.categorie]=(cur[e.categorie]||0)+e.qte;});
-  D.stockS.forEach(s=>{cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
-  // Stock initial
+  D.stockE.forEach(e=>{if(e.categorie!=='Balles 🏀')cur[e.categorie]=(cur[e.categorie]||0)+e.qte;});
+  D.stockS.forEach(s=>{if(s.categorie!=='Balles 🏀')cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
   D.stockInit.forEach(si=>{
     cur.Farine=(cur.Farine||0)+(si.farine||0);
     cur['Sachets rouleaux']=(cur['Sachets rouleaux']||0)+(si.sachetsR||0);
     cur['Sachets grand']=(cur['Sachets grand']||0)+(si.sachetsG||0);
     cur['Sachets petit']=(cur['Sachets petit']||0)+(si.sachetsP||0);
-    cur['Balles 🏀']=(cur['Balles 🏀']||0)+(si.balles||0);
   });
+  // Balles: stock initial + productions - commandes (stockE/stockS ignorés)
+  const initBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0);
+  const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
+  const cmdBalles=D.commandes.reduce((s,c)=>s+c.qte,0);
+  cur['Balles 🏀']=initBalles+prodBalles-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
