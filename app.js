@@ -537,17 +537,40 @@ function exportData() {
 function exportToExcel(section) {
   if(typeof XLSX==='undefined')return alert('Bibliothèque Excel non chargée');
   const wb=XLSX.utils.book_new();
+  const dateSections=['commandes','productions','montants','depenses','retraits','stockE','stockS'];
+  const fil=(key,arr)=>dateSections.includes(key)?arr.filter(x=>inRange(x.date)):arr;
   const map={
     clients:{data:D.clients,h:['Nom','Téléphone','Adresse','Dette initiale','Dette actuelle'],f:c=>[c.name,c.phone||'',c.addr||'',c.detteInit||0,c.detteCur||0]},
-    commandes:{data:D.commandes,h:['Client','Date','Produit','Quantité','Prix total','Payé','Reste','Statut'],f:c=>[c.client,c.date,c.produit,c.qte,c.prixTotal,c.paye,c.reste,c.statut]},
-    productions:{data:D.productions,h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,Math.floor(p.reel/50)]},
-    montants:{data:D.montants,h:['Date','Description','Type','Client','Montant'],f:m=>[m.date,m.desc,m.type,m.client||'',m.montant]},
-    depenses:{data:D.depenses,h:['Date','Catégorie','Montant','Détail','Employé'],f:d=>[d.date,d.categorie,d.montant,d.detail||'',d.employe||'']},
-    retraits:{data:D.retraits,h:['Date','Employé','Montant','Notes'],f:r=>[r.date,r.employe,r.montant,r.notes||'']},
-    stockE:{data:D.stockE,h:['Date','Catégorie','Quantité','Unité','Coût','Description'],f:s=>[s.date,s.categorie,s.qte,s.unite||'',s.cout||0,s.desc||'']},
-    stockS:{data:D.stockS,h:['Date','Catégorie','Quantité','Unité','Description'],f:s=>[s.date,s.categorie,s.qte,s.unite||'',s.desc||'']},
+    commandes:{data:fil('commandes',D.commandes),h:['Client','Date','Produit','Quantité','Prix total','Payé','Reste','Statut'],f:c=>[c.client,c.date,c.produit,c.qte,c.prixTotal,c.paye,c.reste,c.statut]},
+    productions:{data:fil('productions',D.productions),h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles','Sachets'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,Math.floor(p.reel/50),p.type==='Femme'?p.reel:'']},
+    montants:{data:fil('montants',D.montants),h:['Date','Description','Type','Client','Montant'],f:m=>[m.date,m.desc,m.type,m.client||'',m.montant]},
+    depenses:{data:fil('depenses',D.depenses),h:['Date','Catégorie','Montant','Détail','Employé'],f:d=>[d.date,d.categorie,d.montant,d.detail||'',d.employe||'']},
+    retraits:{data:fil('retraits',D.retraits),h:['Date','Employé','Montant','Notes'],f:r=>[r.date,r.employe,r.montant,r.notes||'']},
+    stockE:{data:fil('stockE',D.stockE),h:['Date','Catégorie','Quantité','Unité','Coût','Description'],f:s=>[s.date,s.categorie,s.qte,s.unite||'',s.cout||0,s.desc||'']},
+    stockS:{data:fil('stockS',D.stockS),h:['Date','Catégorie','Quantité','Unité','Description'],f:s=>[s.date,s.categorie,s.qte,s.unite||'',s.desc||'']},
     employes:{data:D.employes,h:['Nom','Type','Téléphone','Date embauche','Notes'],f:e=>[e.name,e.type,e.phone||'',e.dateEmbauche||'',e.notes||'']},
   };
+  // Récapitulatif financier
+  const cmd=fil('commandes',D.commandes),prod=fil('productions',D.productions),mont=fil('montants',D.montants),dep=fil('depenses',D.depenses);
+  const totRevenus=mont.reduce((s,m)=>s+m.montant,0),totDepenses=dep.reduce((s,d)=>s+d.montant,0);
+  const prodBalles=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
+  const cmdBalles=cmd.reduce((s,c)=>s+c.qte,0);
+  const recap=[
+    ['RÉCAPITULATIF - Période',filterRange.start&&filterRange.end?`${filterRange.start} → ${filterRange.end}`:'Toute période'],
+    [],['Indicateur','Valeur'],
+    ['👥 Clients',D.clients.length],
+    ['🏀 Balles produites',prodBalles],
+    ['📦 Balles vendues',cmdBalles],
+    ['💰 Total revenus',totRevenus],
+    ['💸 Total dépenses',totDepenses],
+    ['📋 Bilan net',totRevenus-totDepenses],
+    ['🏦 Dettes clients total',D.clients.reduce((s,c)=>s+(c.detteCur||0),0)],
+    ['👷 Employés',D.employes.length],
+    ['🛒 Commandes (période)',cmd.length],
+    ['🏭 Productions (période)',prod.length],
+  ];
+  const wsRecap=XLSX.utils.aoa_to_sheet(recap);
+  XLSX.utils.book_append_sheet(wb,wsRecap,'Récapitulatif');
   if(section==='all'){
     for(const [key,{data,h,f}] of Object.entries(map)){
       const rows=[h,...data.map(f)];
@@ -556,11 +579,13 @@ function exportToExcel(section) {
     }
   } else {
     const {data,h,f}=map[section]||{data:[],h:[],f:()=>[]};
-    const rows=[h,...data.map(f)];
+    let rows=[h,...data.map(f)];
+    if(section==='montants')rows.push([],['TOTAL',totRevenus]);
+    if(section==='depenses')rows.push([],['TOTAL',totDepenses]);
     const ws=XLSX.utils.aoa_to_sheet(rows);
     XLSX.utils.book_append_sheet(wb,ws,'Données');
   }
-  XLSX.writeFile(wb,section==='all'?'chips_complet.xlsx':`chips_${section}.xlsx`);
+  XLSX.writeFile(wb,section==='all'?'chips_comptabilite.xlsx':`chips_${section}.xlsx`);
 }
 
 // ─── RENDER ───
