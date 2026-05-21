@@ -5,7 +5,7 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:2, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:3, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
@@ -31,6 +31,11 @@ function migrateSchema() {
     for(const e of D.employes){e.name=e.name||'';e.type=e.type||'Autre';e.phone=e.phone||'';e.dateEmbauche=e.dateEmbauche||now.slice(0,10);e.notes=e.notes||'';}
     for(const r of D.retraits){r.date=r.date||now.slice(0,10);r.employe=r.employe||'';r.montant=r.montant||0;r.notes=r.notes||'';}
     D._schemaVer=2;
+  }
+  if(cur<3){
+    D.stockInit=D.stockInit||[];
+    for(const s of D.stockInit){s.date=s.date||new Date().toISOString().slice(0,10);s.farine=s.farine||0;s.sachetsR=s.sachetsR||0;s.sachetsG=s.sachetsG||0;s.sachetsP=s.sachetsP||0;s.balles=s.balles||0;}
+    D._schemaVer=3;
   }
 }
 
@@ -538,6 +543,36 @@ function saveStock(type,id) {
   closeM();save();render();
 }
 
+function stockInitForm(item) {
+  const e=!!item;
+  openM(`
+    <h3>${e?'✏️':'📋'} Stock initial</h3>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Stock de départ à une date précise (en unités)</p>
+    <div class="m-row"><div><label>Date</label><input type="date" id="siDate" value="${e?item.date:today()}" /></div></div>
+    ${STK.map(c=>{
+      const key={Farine:'farine','Sachets rouleaux':'sachetsR','Sachets grand':'sachetsG','Sachets petit':'sachetsP','Balles 🏀':'balles'}[c];
+      return `<label>${c}</label><input type="number" id="si_${key}" value="${e?item[key]||'':''}" />`;
+    }).join('')}
+    <div style="font-size:11px;color:var(--muted);margin:5px 0">💡 1 balle = 50 sachets</div>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveStockInit(${e?item.id:'null'})">Enregistrer</button></div>
+  `);
+}
+
+function saveStockInit(id) {
+  const obj={
+    date:val('siDate'),
+    farine:num('si_farine')||0,
+    sachetsR:num('si_sachetsR')||0,
+    sachetsG:num('si_sachetsG')||0,
+    sachetsP:num('si_sachetsP')||0,
+    balles:num('si_balles')||0
+  };
+  if(id){const x=D.stockInit.find(i=>i.id===id);if(x)Object.assign(x,obj);}
+  else D.stockInit.push({id:nextId++,...obj,createdBy:me()});
+  closeM();save();render();
+}
+
 // ─── EMPLOYÉ ───
 function empForm(e) {
   const edit=!!e;
@@ -887,15 +922,28 @@ function stockHTML() {
   const cur={}; STK.forEach(c=>cur[c]=0);
   D.stockE.forEach(e=>{cur[e.categorie]=(cur[e.categorie]||0)+e.qte;});
   D.stockS.forEach(s=>{cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
+  // Stock initial
+  D.stockInit.forEach(si=>{
+    cur.Farine=(cur.Farine||0)+(si.farine||0);
+    cur['Sachets rouleaux']=(cur['Sachets rouleaux']||0)+(si.sachetsR||0);
+    cur['Sachets grand']=(cur['Sachets grand']||0)+(si.sachetsG||0);
+    cur['Sachets petit']=(cur['Sachets petit']||0)+(si.sachetsP||0);
+    cur['Balles 🏀']=(cur['Balles 🏀']||0)+(si.balles||0);
+  });
   // Balles calculées depuis les données réelles (productions - commandes)
   const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
   const cmdBalles=D.commandes.reduce((s,c)=>s+c.qte,0);
-  cur['Balles 🏀']=prodBalles-cmdBalles;
-  return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées et sorties</p>
-  <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button></div>
+  cur['Balles 🏀']+=prodBalles-cmdBalles;
+  const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
+  return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
+  <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
   <div class="grid">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
     <div class="big" style="font-size:20px;color:${(cur[c]||0)>=0?'var(--green)':'var(--red)'}">${cur[c]||0}</div>
     <div class="lbl" style="font-size:10px">${c}</div></div>`).join('')}</div>
+  ${initItems.length?`<div class="card mb-12"><h2>📋 Stock initial</h2>
+  <div class="table-wrap"><table><thead><tr><th>Date</th><th>Farine</th><th>Sach. rouleaux</th><th>Sach. grand</th><th>Sach. petit</th><th>Balles 🏀</th><th></th></tr></thead>
+  <tbody>${initItems.map(si=>`<tr><td>${esc(si.date)}</td><td>${si.farine||0}</td><td>${si.sachetsR||0}</td><td>${si.sachetsG||0}</td><td>${si.sachetsP||0}</td><td>${si.balles||0}</td>
+  <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce stock initial?','stockInit',D.stockInit.find(x=>x.id===${si.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join('')}</tbody></table></div></div>`:''}
   <div class="card mb-12"><h2>📥 Entrées</h2><div class="table-wrap">${makeStockTable(D.stockE,'E')}</div></div>
   <div class="card"><h2>📤 Sorties</h2><div class="table-wrap">${makeStockTable(D.stockS,'S')}</div></div>`;
 }
