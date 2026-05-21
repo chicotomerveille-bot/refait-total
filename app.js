@@ -753,6 +753,7 @@ function dashHTML() {
   const totalBalles=Math.floor(totalSachets/50);
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
   const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+c.qte,0);
+  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - D.commandes.reduce((s,c)=>s+c.qte,0);
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
   const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
@@ -762,9 +763,10 @@ function dashHTML() {
   const wkBalles=Math.floor(wkProds.reduce((s,p)=>s+p.reel,0)/50);
 
   return `<h1>📊 Tableau de Bord</h1><p class="desc">Vue d'ensemble</p>
-  <div class="grid" style="grid-template-columns:1fr 1fr">
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
     <div class="card accent tc"><div class="big">${totalBalles}</div><div class="lbl">🏀 Balles produites</div></div>
     <div class="card tc"><div class="big">${cmdPeriodBalles}</div><div class="lbl">📦 Balles vendues</div></div>
+    <div class="card tc"><div class="big" style="color:${stockBalles>=0?'var(--green)':'var(--red)'}">${stockBalles}</div><div class="lbl">📦 Stock balles dispo</div></div>
   </div>
   <div class="grid">
     <div class="card"><div class="big">${D.clients.length}</div><div class="lbl">👥 Clients</div></div>
