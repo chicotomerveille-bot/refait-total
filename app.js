@@ -930,10 +930,6 @@ function stockHTML() {
     cur['Sachets petit']=(cur['Sachets petit']||0)+(si.sachetsP||0);
     cur['Balles 🏀']=(cur['Balles 🏀']||0)+(si.balles||0);
   });
-  // Balles calculées depuis les données réelles (productions - commandes)
-  const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
-  const cmdBalles=D.commandes.reduce((s,c)=>s+c.qte,0);
-  cur['Balles 🏀']+=prodBalles-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
