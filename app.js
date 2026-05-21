@@ -544,15 +544,57 @@ function empForm(e) {
   openM(`
     <h3>${edit?'✏️ Modifier':'👷 Nouvel'} employé</h3>
     <label>Nom</label><input id="eName" value="${edit?esc(e.name):''}" />
-    <div class="m-row"><div><label>Type</label><select id="eType"><option value="Femme"${edit&&e.type==='Femme'?' selected':''}>👩 Femme</option>
+    <div class="m-row"><div><label>Rôle / Poste</label><input id="eRole" value="${edit?esc(e.role||''):''}" /></div>
+    <div><label>Type</label><select id="eType"><option value="Femme"${edit&&e.type==='Femme'?' selected':''}>👩 Femme</option>
     <option value="Homme"${edit&&e.type==='Homme'?' selected':''}>👨 Homme</option>
-    <option value="Autre"${edit&&e.type==='Autre'?' selected':''}>👤 Autre</option></select></div>
-    <div><label>Téléphone</label><input id="ePhone" value="${edit?esc(e.phone||''):''}" /></div></div>
-    <label>Date d'embauche</label><input type="date" id="eDate" value="${edit?e.dateEmbauche:today()}" />
+    <option value="Autre"${edit&&e.type==='Autre'?' selected':''}>👤 Autre</option></select></div></div>
+    <div class="m-row"><div><label>Téléphone</label><input id="ePhone" value="${edit?esc(e.phone||''):''}" /></div>
+    <div><label>Date d'embauche</label><input type="date" id="eDate" value="${edit?e.dateEmbauche:today()}" /></div></div>
     <label>Notes</label><textarea id="eNotes">${edit?esc(e.notes||''):''}</textarea>
     <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
     <button class="btn btn-p" onclick="saveEmp(${edit?e.id:'null'})">${edit?'Modifier':'Enregistrer'}</button></div>
   `);
+}
+function saveEmp(id) {
+  const n=val('eName').trim(); if(!n)return alert('Nom requis');
+  if(!id&&D.employes.find(e=>e.name===n))return alert('Ce nom existe deja');
+  if(id){const e=D.employes.find(x=>x.id===id);if(e){e.name=n;e.role=val('eRole');e.type=val('eType');e.phone=val('ePhone');e.dateEmbauche=val('eDate');e.notes=val('eNotes');}}
+  else D.employes.push({id:nextId++,name:n,role:val('eRole'),type:val('eType'),phone:val('ePhone'),dateEmbauche:val('eDate'),notes:val('eNotes'),createdBy:me()});
+  closeM();save();render();
+}
+function retraitForm(id) {
+  const e=D.employes.find(x=>x.id===id); if(!e)return;
+  const paie=D.productions.reduce((s,p)=>prodEmps(p).includes(e.name)?s+(p.type==='Femme'?Math.round(p.paie/prodEmps(p).length):p.paie):s,0);
+  const retire=D.retraits.filter(r=>r.employe===e.name).reduce((s,r)=>s+r.montant,0);
+  const solde=paie-retire;
+  openM(`
+    <h3>💸 Retrait — ${esc(e.name)}</h3>
+    <div class="calc"><div class="r"><span>💰 Paie gagnée</span><span class="v">${fmt(paie)}</span></div>
+    <div class="r"><span>↩️ Déjà retiré</span><span class="v">${fmt(retire)}</span></div>
+    <div class="r" style="font-size:16px;color:${solde>=0?'var(--accent)':'var(--red)'}"><span>🏦 Solde</span><span class="v">${fmt(solde)}</span></div></div>
+    <div class="m-row"><div><label>Date</label><input type="date" id="rDate" value="${today()}" /></div>
+    <div><label>Montant</label><input type="number" id="rMt" value="" oninput="retraitWarn(${solde})" /></div></div>
+    <div id="rWarn" style="display:none;background:var(--surface);border:1px solid var(--red);border-radius:6px;padding:8px;font-size:12px;margin-bottom:8px"></div>
+    <label>Notes</label><textarea id="rNotes"></textarea>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveRetrait(${id},${solde})">Retirer</button></div>
+  `);
+  setTimeout(()=>{const el=document.getElementById('rMt');if(el)el.value=solde>0?solde:'';},50);
+}
+function retraitWarn(solde) {
+  const mt=num('rMt'),w=document.getElementById('rWarn');
+  if(!w)return;
+  if(mt>Math.max(0,solde)){
+    const d=mt-Math.max(0,solde);
+    w.style.display='block';
+    w.innerHTML=`⚠️ Dépassement de <b>${fmt(d)}</b> sur le solde disponible.${solde<0?' (Compte déjà en déficit de '+fmt(-solde)+')':''}`;
+  } else w.style.display='none';
+}
+function saveRetrait(id,maxS) {
+  const e=D.employes.find(x=>x.id===id); if(!e)return alert('Erreur');
+  const mt=num('rMt'); if(mt<=0)return alert('Montant invalide');
+  D.retraits.push({id:nextId++,date:val('rDate'),employe:e.name,montant:mt,notes:val('rNotes'),createdBy:me()});
+  closeM();save();render();
 }
 
 function saveEmp(id) {
@@ -921,16 +963,26 @@ function employesHTML() {
     return {...e,paie,retire,solde:paie-retire};
   });
   const retraits=[...D.retraits].sort((a,b)=>b.date.localeCompare(a.date));
+  const totPaie=empData.reduce((s,e)=>s+e.paie,0);
+  const totRetire=empData.reduce((s,e)=>s+e.retire,0);
+  const totSolde=totPaie-totRetire;
   return `<h1>👷 Employés</h1><p class="desc">Registre et suivi des paies</p>
+  <div class="grid">
+    <div class="card" style="text-align:center"><div class="big">${D.employes.length}</div><div class="lbl">👥 Employés</div></div>
+    <div class="card" style="text-align:center"><div class="big" style="color:var(--green)">${fmt(totPaie)}</div><div class="lbl">💰 Paies gagnées</div></div>
+    <div class="card" style="text-align:center"><div class="big" style="color:var(--red)">${fmt(totRetire)}</div><div class="lbl">↩️ Retiré</div></div>
+    <div class="card" style="text-align:center"><div class="big" style="color:${totSolde>=0?'var(--green)':'var(--red)'}">${fmt(totSolde)}</div><div class="lbl">🏦 Solde net</div></div>
+  </div>
   <div class="toolbar"><button class="btn btn-p" onclick="empForm()">+ Ajouter</button></div>
   <div class="table-wrap mb-12"><table><thead><tr><th>Nom</th><th>Type</th><th>💰 Paie gagnée</th><th>↩️ Retiré</th><th>🏦 Solde</th><th>Actions</th></tr></thead>
-  <tbody>${empData.length?empData.map(e=>`<tr><td><strong>${esc(e.name)}</strong></td>
+  <tbody>${empData.length?empData.map(e=>{const pct=e.paie>0?Math.round(Math.min(e.retire/e.paie,1)*100):0;
+  return `<tr><td><strong>${esc(e.name)}</strong>${e.role?`<div style="font-size:10px;color:var(--text3)">${esc(e.role)}</div>`:''}</td>
   <td><span class="badge ${e.type==='Femme'?'bg-k':e.type==='Homme'?'bg-b':'bg-n'}">${e.type}</span></td>
   <td style="font-weight:600;color:var(--accent)">${fmt(e.paie)}</td><td>${fmt(e.retire)}</td>
-  <td style="font-weight:600;color:${e.solde>0?'var(--green)':'var(--text3)'}">${fmt(e.solde)}</td>
+  <td>${(()=>{if(e.solde>0)return `<div style="font-weight:700;color:var(--green);font-size:14px">${fmt(e.solde)}</div><div style="background:var(--border);border-radius:99px;height:4px;width:70px;margin-top:3px"><div style="background:var(--green);height:4px;border-radius:99px;width:${pct}%"></div></div><div style="font-size:9px;color:var(--text3)">${pct}% retiré</div>`;if(e.solde===0)return `<span style="color:var(--text3);font-weight:600">0 FCFA</span><div style="font-size:9px;color:var(--text3)">Tout retiré</div>`;return `<div style="background:var(--surface);border:1px solid var(--red);border-radius:6px;padding:4px 6px;display:inline-block"><span style="font-weight:700;color:var(--red);font-size:13px">-${fmt(-e.solde)}</span><div style="font-size:9px;color:var(--red);font-weight:600">⚠ Dépassement</div></div>`;})()}</td>
   <td class="gap-4"><button class="btn btn-sm btn-gh" onclick="empForm(D.employes.find(x=>x.id===${e.id}))"><i class="ti ti-pencil"></i></button>
   <button class="btn btn-sm btn-g" onclick="retraitForm(${e.id})"><i class="ti ti-cash"></i></button>
-  <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cet employé?','employes',D.employes.find(x=>x.id===${e.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="6" class="empty">Aucun employé</td></tr>'}</tbody></table></div>
+  <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cet employé?','employes',D.employes.find(x=>x.id===${e.id}))"><i class="ti ti-trash"></i></button></td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">Aucun employé</td></tr>'}</tbody></table></div>
   <div class="card"><h2>📋 Retraits caisse</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Employé</th><th>Montant</th><th>Notes</th><th></th></tr></thead>
   <tbody>${retraits.length?retraits.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.employe)}</td><td style="font-weight:600">${fmt(r.montant)}</td><td>${esc(r.notes||'')}</td>
   <td><button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce retrait?','retraits',D.retraits.find(x=>x.id===${r.id}))"><i class="ti ti-trash"></i></button></td></tr>`).join(''):'<tr><td colspan="5" class="empty">Aucun retrait</td></tr>'}</tbody></table></div></div>`;
