@@ -986,6 +986,8 @@ function dashHTML() {
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
   const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+cmdStockBalles(c),0);
   const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const totalDette=D.clients.reduce((s,c)=>s+(c.detteCur||0),0);
+  const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0).sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
   const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
@@ -1012,8 +1014,17 @@ function dashHTML() {
   <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
     <div class="card tc"><div class="big" style="color:${bilan>=0?'var(--green)':'var(--red)'}">${fmt(bilan)}</div><div class="lbl">📋 Bilan net</div></div>
     <div class="card tc"><div class="big">${wkBalles}</div><div class="lbl">🏀 Balles (7j)</div></div>
-    <div class="card tc"><div class="big">${fmt(D.clients.reduce((s,c)=>s+(c.detteCur||0),0))}</div><div class="lbl">📌 Dettes clients</div></div>
+    <div class="card tc"><div class="big" style="color:var(--red)">${fmt(totalDette)}</div><div class="lbl">📌 Dettes clients</div></div>
   </div>
+  ${debiteurs.length?`<div class="card"><h2>🏦 Débiteurs</h2>
+  <div style="display:grid;gap:4px">${debiteurs.map(d=>{
+    const pctD=d.detteInit?Math.round(((d.detteInit-d.detteCur)/d.detteInit)*100):0;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+      <span><strong>${esc(d.name)}</strong> ${d.phone?`<span class="fs">${esc(d.phone)}</span>`:''}</span>
+      <span style="font-weight:700;color:var(--red);font-size:13px">${fmt(d.detteCur)}</span>
+    </div>`;
+  }).join('')}</div>
+  <div style="margin-top:8px;text-align:right"><a class="fs" onclick="nav('clients');render()" style="cursor:pointer;color:var(--accent)">→ Voir tous les clients</a></div></div>`:''}
   <div class="card"><h2>🏭 Dernières productions</h2>${prods.length?prods.map(p=>`
     <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px">
       <span>${esc(p.date)} · ${esc(prodEmps(p).join(', '))}</span>
@@ -1045,20 +1056,30 @@ function dashCharts() {
 }
 
 function clientsHTML() {
-  return `<h1>👥 Clients & Dettes</h1><p class="desc">Suivi des clients — dettes et progression des paiements</p>
+  const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0);
+  const totalDette=debiteurs.reduce((s,c)=>s+(c.detteCur||0),0);
+  const sorted=[...D.clients].sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
+  return `<h1>👥 Clients & Dettes</h1>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr;margin-bottom:12px">
+    <div class="card tc"><div class="big">${D.clients.length}</div><div class="lbl">👥 Total clients</div></div>
+    <div class="card tc"><div class="big" style="color:var(--red)">${debiteurs.length}</div><div class="lbl">🔴 Ont une dette</div></div>
+    <div class="card tc"><div class="big" style="color:var(--red);font-weight:800">${fmt(totalDette)}</div><div class="lbl">🏦 Total dû</div></div>
+  </div>
   <div class="toolbar"><button class="btn btn-p" onclick="clientForm()">+ Ajouter</button></div>
   <div class="table-wrap"><table><thead><tr><th>Client</th><th>📞 Contact</th><th>💳 Dette</th><th>📊 Progression</th><th>📦 Commandes</th><th></th></tr></thead>
-  <tbody>${D.clients.length?D.clients.map(c=>{
+  <tbody>${sorted.length?sorted.map(c=>{
     const cmds=D.commandes.filter(x=>x.client===c.name);
     const pending=cmds.filter(x=>x.reste>0);
     const totalCmd=cmds.reduce((s,x)=>s+x.prixTotal,0);
     const payeCmd=cmds.reduce((s,x)=>s+x.paye,0);
     const pctPaye=totalCmd>0?Math.round((payeCmd/totalCmd)*100):0;
     const pctDette=c.detteInit>0?Math.round(((c.detteInit-(c.detteCur||0))/c.detteInit)*100):(c.detteCur>0?0:100);
-    return `<tr><td><strong>${esc(c.name)}</strong>${c.phone?`<br><span class="fs">${esc(c.phone)}</span>`:''}</td>
+    return `<tr${(c.detteCur||0)>0?' style="background:rgba(239,68,68,0.04);border-left:3px solid var(--red)"':''}>
+    <td><strong>${esc(c.name)}</strong>${c.phone?`<br><span class="fs">${esc(c.phone)}</span>`:''}</td>
     <td>${esc(c.phone||'—')}</td>
     <td style="color:${(c.detteCur||0)>0?'var(--red)':'var(--green)'}">
-      <strong>${fmt(c.detteCur||0)}</strong>
+      <strong style="font-size:14px">${fmt(c.detteCur||0)}</strong>
+      ${(c.detteCur||0)>0?` <span class="badge bg-r">À payer</span>`:''}
       ${c.detteInit>0?`<br><span class="fs">Init: ${fmt(c.detteInit)}</span>`:''}
     </td>
     <td style="min-width:120px">
