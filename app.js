@@ -163,6 +163,7 @@ function save() {
 }
 function today() { return new Date().toISOString().slice(0,10); }
 function fmt(n) { return (n||0).toLocaleString('fr-FR')+' FCFA'; }
+function fmtN(n) { return Number(n||0).toLocaleString('fr-FR'); }
 function esc(s) { const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 function prodEmps(p){return p.employes||(p.employe?[p.employe]:['Employé']);}
 
