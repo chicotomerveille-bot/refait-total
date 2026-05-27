@@ -624,14 +624,15 @@ function saveProd(id) {
     if(checks.length<2)return alert('Sélectionnez au moins 2 employées');
     const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
     const notes=val('p-notes').trim();
-    let paiePar;
-    if(shift==='Nuit') paiePar=PAIE_FEMMES.nuit.taux;
-    else {const quota=PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300);if(!sachets)return alert('Nombre de sachets requis');paiePar=Math.round((sachets/quota)*PAIE_FEMMES.jour.taux);}
+    let paiePart;
+    if(shift==='Nuit') paiePart=Math.round(PAIE_FEMMES.nuit.taux/checks.length);
+    else{const q=PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300);if(!sachets)return alert('Nombre de sachets requis');paiePart=Math.round((sachets/q)*PAIE_FEMMES.jour.taux/checks.length);}
+    const reelPart=Math.round(sachets/checks.length);
     const balles=sachets>0?Math.floor(sachets/50):0;
     const noms=[].map.call(checks,c=>c.value).join(', ');
     if(id){const idx=D.productions.findIndex(x=>x.id===id);if(idx>=0)D.productions.splice(idx,1);}
     [].forEach.call(checks,emp=>{
-      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:sachets,quota:PAIE_FEMMES.jour.quotas[checks.length]||0,paie:paiePar,notes:notes||'Équipe: '+noms,createdBy:me()});
+      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:reelPart,quota:PAIE_FEMMES.jour.quotas[1]||200,paie:paiePart,notes:notes||'Équipe: '+noms,createdBy:me()});
     });
     if(balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production équipe '+sachets+' sachets',createdBy:me()});
     closeM();save();render();return;
