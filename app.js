@@ -696,8 +696,6 @@ function recalcDebts() {
     let debt=c.detteInit||0;
     for(const cmd of D.commandes.filter(x=>x.client===c.name))
       debt+=cmd.reste;
-    for(const mt of D.montants.filter(x=>x.client===c.name&&x.type==='Dette reçue'))
-      debt-=mt.montant;
     c.detteCur=Math.max(0,debt);
   }
 }
@@ -1485,7 +1483,32 @@ function seedEmployees() {
   if(added){save();render();}
 }
 
-// ─── INIT ───
+function seedNathalie(){
+  if(D.clients.some(c=>c.name==='Nathalie'))return;
+  const clId=nextId++;
+  D.clients.push({id:clId,name:'Nathalie',phone:'',addr:'',detteInit:0,detteCur:0,createdBy:'système'});
+  D.commandes.push({id:nextId++,client:'Nathalie',date:'2026-05-18',produit:'Chips',qte:4,unite:'Balle',prixTotal:100000,paye:100000,reste:0,statut:'Livrée',createdBy:'système'});
+  D.commandes.push({id:nextId++,client:'Nathalie',date:'2026-05-19',produit:'Chips',qte:17,unite:'Balle',prixTotal:425000,paye:0,reste:425000,statut:'En attente',createdBy:'système'});
+  D.stockS.push({id:nextId++,date:'2026-05-18',categorie:'Balles 🏀',qte:4,unite:'pièce',desc:'Commande Nathalie',createdBy:'système'});
+  D.stockS.push({id:nextId++,date:'2026-05-19',categorie:'Balles 🏀',qte:17,unite:'pièce',desc:'Commande Nathalie',createdBy:'système'});
+  D.montants.push({id:nextId++,date:'2026-05-18',montant:100000,desc:'Acompte commande - Nathalie',type:'Vente',client:'Nathalie',createdBy:'système'});
+  D.montants.push({id:nextId++,date:'2026-05-20',montant:185000,desc:'Remboursement dette Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:'système'});
+  D.montants.push({id:nextId++,date:'2026-05-22',montant:40000,desc:'Remboursement dette Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:'système'});
+  D.montants.push({id:nextId++,date:'2026-05-22',montant:150000,desc:'Remboursement dette Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:'système'});
+  // Distribute Dette reçue payments to commande restes (oldest first)
+  for(const mt of D.montants.filter(x=>x.client==='Nathalie'&&x.type==='Dette reçue')){
+    const cmds=D.commandes.filter(x=>x.client==='Nathalie'&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
+    let left=mt.montant;
+    for(const cmd of cmds){
+      if(left<=0)break;
+      const pay=Math.min(left,cmd.reste);
+      cmd.paye+=pay; cmd.reste=cmd.prixTotal-cmd.paye; left-=pay;
+      if(cmd.reste<=0)cmd.statut='Livrée';
+    }
+  }
+  save();
+}
+
 renderTabs(); updateUserUI();
 loadSB().then(()=>{
   recalcDebts();save();
@@ -1506,5 +1529,5 @@ loadSB().then(()=>{
   document.getElementById('p-dettes').innerHTML = dettesHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI(); checkStorageSize();
-  seedEmployees();
+  seedEmployees(); seedNathalie();
 });
