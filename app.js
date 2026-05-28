@@ -1484,11 +1484,12 @@ function seedEmployees() {
 }
 
 function removeNathalie(){
-  if(!D.clients.some(c=>c.name==='Nathalie'))return;
-  D.clients=D.clients.filter(c=>c.name!=='Nathalie');
-  D.commandes=D.commandes.filter(c=>c.client!=='Nathalie');
-  D.montants=D.montants.filter(m=>m.client!=='Nathalie');
-  D.stockS=D.stockS.filter(s=>!s.desc?.includes('Nathalie'));
+  const re=/^nathalie$/i;
+  if(!D.clients.some(c=>re.test(c.name)))return;
+  D.clients=D.clients.filter(c=>!re.test(c.name));
+  D.commandes=D.commandes.filter(c=>!re.test(c.client));
+  D.montants=D.montants.filter(m=>!re.test(m.client||''));
+  D.stockS=D.stockS.filter(s=>!(s.desc||'').match(/nathalie/i));
   save();
 }
 
