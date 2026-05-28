@@ -275,6 +275,20 @@ function confirmDel(msg,type,item) {
 function execDel(type,id) {
   const item=D[type].find(x=>x.id===id); if(!item)return;
   const motif=val('delMotif').trim();
+  if(type==='clients'){
+    const nom=item.name;
+    D.commandes.filter(c=>c.client===nom).forEach(cmd=>{
+      const b=cmdStockBalles(cmd);
+      if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation suppression client '+nom,createdBy:me()});
+      trashIt('commandes',cmd,motif);
+    });
+    D.commandes=D.commandes.filter(c=>c.client!==nom);
+    D.montants.filter(m=>m.client===nom).forEach(mt=>trashIt('montants',mt,motif));
+    D.montants=D.montants.filter(m=>m.client!==nom);
+    trashIt(type,item,motif);
+    D[type]=D[type].filter(x=>x.id!==id);
+    recalcDebts(); closeM();save();render();return;
+  }
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
@@ -1520,5 +1534,5 @@ loadSB().then(()=>{
   document.getElementById('p-dettes').innerHTML = dettesHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI(); checkStorageSize();
-  const added=seedNathalie(); if(added)save(); seedEmployees();
+  seedEmployees();
 });
