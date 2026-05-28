@@ -631,8 +631,8 @@ function saveProd(id) {
     const balles=sachets>0?Math.floor(sachets/50):0;
     const noms=[].map.call(checks,c=>c.value).join(', ');
     if(id){const idx=D.productions.findIndex(x=>x.id===id);if(idx>=0)D.productions.splice(idx,1);}
-    [].forEach.call(checks,emp=>{
-      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:reelPart,quota:PAIE_FEMMES.jour.quotas[1]||200,paie:paiePart,notes:notes||'Équipe: '+noms,createdBy:me()});
+    [].forEach.call(checks,function(emp,i){
+      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:reelPart,quota:PAIE_FEMMES.jour.quotas[1]||200,paie:paiePart,_ballesEq:i===0?balles:0,notes:notes||'Équipe: '+noms,createdBy:me()});
     });
     if(balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production équipe '+sachets+' sachets',createdBy:me()});
     closeM();save();render();return;
@@ -1210,7 +1210,7 @@ function prodHTML() {
     const paiePar=nb>1?Math.round(p.paie/nb):p.paie;
     const reelPar=nb>1?Math.round(p.reel/nb):p.reel;
     const quotaPar=nb>1&&p.quota?Math.round(p.quota/nb):p.quota||0;
-    const ballesPar=p.type==='Femme'?Math.floor(reelPar/50):reelPar;
+    const ballesPar=p.type==='Femme'?(p._ballesEq!==undefined?p._ballesEq:Math.floor(reelPar/50)):reelPar;
     emps.forEach(n=>{
       if(!byEmp[n])byEmp[n]={nom:n,typeEmp:p.type,totFem:0,totHom:0,totB:0,totPaie:0,moisPaie:0,totQuota:0,nbJours:0};
       const r=byEmp[n];
@@ -1264,7 +1264,7 @@ function prodHTML() {
     const reel=p.reel;
     const ec=reel-(q||0);
     const ecTxt=q!==null?ec>0?'<span style="color:var(--green)">+'+fmtN(ec)+'</span>':ec<0?'<span style="color:var(--red)">'+fmtN(ec)+'</span>':'<span style="color:var(--green)">✓</span>':'<span style="color:var(--muted)">—</span>';
-    const balles=p.type==='Femme'?Math.floor(p.reel/50):p.reel;
+    const balles=p.type==='Femme'?(p._ballesEq!==undefined?p._ballesEq:Math.floor(p.reel/50)):p.reel;
     return `<tr><td>${esc(p.date)}</td><td style="font-weight:600">${esc(p.employes?p.employes.join(', '):'')}</td>
     <td class="tc"><span class="badge ${p.shift==='Jour'?'bg-y':'bg-b'}">${esc(p.shift)}</span></td>
     <td class="tr" style="color:var(--muted)">${q!==null?fmtN(q)+(p.type==='Femme'?' sach':' bal'):'—'}</td>
