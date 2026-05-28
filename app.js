@@ -5,19 +5,19 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:5, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:4, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
 let theme = localStorage.getItem('chips_theme')||'light';
-
+let userName = localStorage.getItem('chips_user')||'';
 let syncStatus = 'ok';
 let _prodFilter = 'today';
 
 const PAIE_FEMMES = { jour: { taux: 1800, quotas: { 1: 400, 2: 600, 3: 800, 4: 1000, 5: 1200, 6: 1400 } }, nuit: { taux: 2000 } };
 const PAIE_HOMMES = { jour: { tauxParBalle: 389, quotaParJour: 6, quotaSemaine: 36, salaireSemaineObjectif: 14000 }, nuit: { tauxParBalle: 417, quotaParJour: 6, quotaSemaine: 36, salaireSemaineObjectif: 15000 } };
 
-function me() { return ''; }
+function me() { return userName; }
 
 // ─── SCHÉMA & MIGRATION ───
 function migrateSchema() {
@@ -45,55 +45,10 @@ function migrateSchema() {
     for(const c of D.commandes){if(c.unite===undefined)c.unite='Balle';}
     D._schemaVer=4;
   }
-  if(cur<5){
-    const groupes={};
-    for(const p of D.productions){
-      if(p.type==='Femme'&&p._ballesEq===undefined){
-        const key=p.date+'|'+p.shift+'|'+(p.notes||'');
-        if(!groupes[key])groupes[key]=[];
-        groupes[key].push(p);
-      }
-    }
-    for(const g of Object.values(groupes)){
-      if(g.length<2)continue;
-      const total=Math.floor(g.reduce((s,p)=>s+p.reel,0)/50);
-      g.forEach((p,i)=>{p._ballesEq=i===0?total:0;});
-    }
-    // Nettoyer doublons Nathalie (seed vs saisie manuelle)
-    const nomsNat=['Nathalie','client NATHALIE'];
-    const cmdsNat=D.commandes.filter(c=>nomsNat.includes(c.client));
-    const vus=new Set();
-    D.commandes=D.commandes.filter(c=>{
-      if(!nomsNat.includes(c.client))return true;
-      const k=c.date+'|'+c.qte+'|'+c.prixTotal;
-      if(vus.has(k))return false;
-      vus.add(k);
-      return true;
-    });
-    const mtsNat=D.montants.filter(m=>nomsNat.includes(m.client));
-    const vusM=new Set();
-    D.montants=D.montants.filter(m=>{
-      if(!nomsNat.includes(m.client))return true;
-      const k=m.date+'|'+m.montant+'|'+m.type;
-      if(vusM.has(k))return false;
-      vusM.add(k);
-      return true;
-    });
-    const doublonsClients=D.clients.filter(c=>c.name==='Nathalie'&&D.clients.some(x=>x.name==='client NATHALIE'));
-    if(doublonsClients.length){
-      D.clients=D.clients.filter(c=>c.name!=='Nathalie');
-    }
-    D._schemaVer=5;
-  }
 }
 
 function cmdStockBalles(c) {
   return c.unite==='Sachet' ? Math.floor(c.qte/50) : c.qte;
-}
-function totalCmdBalles(cmds) {
-  const balles=cmds.filter(c=>c.unite!=='Sachet').reduce((s,c)=>s+c.qte,0);
-  const sachets=cmds.filter(c=>c.unite==='Sachet').reduce((s,c)=>s+c.qte,0);
-  return balles+Math.floor(sachets/50);
 }
 
 // ─── SYNC STATUS ───
@@ -132,7 +87,21 @@ function checkStorageSize() {
   }catch(e){}
 }
 
-
+function updateUserUI() {
+  const el=document.getElementById('userInfo'); if(!el)return;
+  if(userName){
+    el.innerHTML=`<span class="uav uav-n">${esc(userName).charAt(0).toUpperCase()}</span><span onclick="setUserName()">${esc(userName)}</span>`;
+    el.className='user-info logged';
+  } else {
+    el.innerHTML='<button class="btn btn-sm btn-p" onclick="setUserName()">👤 Connexion</button>';
+  }
+}
+function setUserName() {
+  const n=prompt(userName?'Changer de nom / Se deconnecter (laisser vide) :':'Entrez votre nom :',userName);
+  if(n===null)return;
+  userName=n.trim()||'';localStorage.setItem('chips_user',userName);
+  updateUserUI();render();
+}
 
 function toggleTheme() {
   theme = theme==='dark'?'light':'dark';
@@ -212,7 +181,7 @@ function nav(p) {
   document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active',el.id==='p-'+p));
   document.querySelectorAll('.mobile-nav a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
-  const labels={'dash':'📊 Tableau de Bord','dettes':'🏦 Dettes','clients':'👥 Clients','commandes':'🛒 Commandes','prod':'🏭 Production','montants':'💰 Montants','depenses':'💸 Dépenses','stock':'📦 Stock','finances':'📈 Finances','analyses':'🧠 Analyses','employes':'👷 Employés','exporter':'📥 Exporter','corbeille':'🗑️ Corbeille'};
+  const labels={'dash':'📊 Tableau de Bord','clients':'👥 Clients','commandes':'🛒 Commandes','prod':'🏭 Production','montants':'💰 Montants','depenses':'💸 Dépenses','stock':'📦 Stock','finances':'📈 Finances','analyses':'🧠 Analyses','employes':'👷 Employés','exporter':'📥 Exporter','corbeille':'🗑️ Corbeille'};
   const pt=document.getElementById('pageTitleMob');
   if(pt)pt.textContent=labels[p]||p;
   closeNav();
@@ -223,7 +192,7 @@ document.addEventListener('click',function(e){const mn=document.getElementById('
 
 function renderTabs() {
   const items = [
-    ['dash','📊','Tableau de Bord'],['dettes','🏦','Dettes'],['clients','👥','Clients'],['commandes','🛒','Commandes'],
+    ['dash','📊','Tableau de Bord'],['clients','👥','Clients'],['commandes','🛒','Commandes'],
     ['prod','🏭','Production'],['montants','💰','Montants'],['depenses','💸','Dépenses'],
     ['stock','📦','Stock'],['finances','📈','Finances'],['analyses','🧠','Analyses'],
     ['employes','👷','Employés'],['exporter','📥','Exporter'],['corbeille','🗑️','Corbeille']
@@ -249,7 +218,6 @@ function num(id) { return +document.getElementById(id)?.value||0; }
 function trashIt(type,item,motif) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now(),motif:motif||'',createdBy:me()}); }
 function cleanTrash() { const S=7*86400000; const b=D.trash.length; D.trash=D.trash.filter(t=>Date.now()-t.deletedAt<S); if(D.trash.length!==b)save(); }
 function restoreT(id) { const t=D.trash.find(x=>x.id===id); if(!t)return; D[t.type].push(t.content); D.trash=D.trash.filter(x=>x.id!==id); save(); render(); }
-function prodBalles(p){return p.type!=='Femme'?p.reel:p._ballesEq!==undefined?p._ballesEq:Math.floor(p.reel/50);}
 
 // ─── CLIENT ───
 function clientForm(c) {
@@ -307,20 +275,6 @@ function confirmDel(msg,type,item) {
 function execDel(type,id) {
   const item=D[type].find(x=>x.id===id); if(!item)return;
   const motif=val('delMotif').trim();
-  if(type==='clients'){
-    const nom=item.name;
-    D.commandes.filter(c=>c.client===nom).forEach(cmd=>{
-      const b=cmdStockBalles(cmd);
-      if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation suppression client '+nom,createdBy:me()});
-      trashIt('commandes',cmd,motif);
-    });
-    D.commandes=D.commandes.filter(c=>c.client!==nom);
-    D.montants.filter(m=>m.client===nom).forEach(mt=>trashIt('montants',mt,motif));
-    D.montants=D.montants.filter(m=>m.client!==nom);
-    trashIt(type,item,motif);
-    D[type]=D[type].filter(x=>x.id!==id);
-    recalcDebts(); closeM();save();render();return;
-  }
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
@@ -328,7 +282,7 @@ function execDel(type,id) {
     if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation commande '+item.client,createdBy:me()});
   }
   if(type==='productions'&&item.type==='Femme'){
-    const bles=prodBalles(item);
+    const bles=Math.floor(item.reel/50);
     if(bles>0)D.stockS.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:bles,unite:'pièce',desc:'Annulation production '+item.reel+' sachets',createdBy:me()});
   }
   trashIt(type,item,motif);
@@ -670,15 +624,14 @@ function saveProd(id) {
     if(checks.length<2)return alert('Sélectionnez au moins 2 employées');
     const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
     const notes=val('p-notes').trim();
-    let paiePart;
-    if(shift==='Nuit') paiePart=Math.round(PAIE_FEMMES.nuit.taux/checks.length);
-    else{const q=PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300);if(!sachets)return alert('Nombre de sachets requis');paiePart=Math.round((sachets/q)*PAIE_FEMMES.jour.taux/checks.length);}
-    const reelPart=Math.round(sachets/checks.length);
+    let paiePar;
+    if(shift==='Nuit') paiePar=PAIE_FEMMES.nuit.taux;
+    else {const quota=PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300);if(!sachets)return alert('Nombre de sachets requis');paiePar=Math.round((sachets/quota)*PAIE_FEMMES.jour.taux);}
     const balles=sachets>0?Math.floor(sachets/50):0;
     const noms=[].map.call(checks,c=>c.value).join(', ');
     if(id){const idx=D.productions.findIndex(x=>x.id===id);if(idx>=0)D.productions.splice(idx,1);}
-    [].forEach.call(checks,function(emp,i){
-      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:reelPart,quota:PAIE_FEMMES.jour.quotas[1]||200,paie:paiePart,_ballesEq:i===0?balles:0,notes:notes||'Équipe: '+noms,createdBy:me()});
+    [].forEach.call(checks,emp=>{
+      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:sachets,quota:PAIE_FEMMES.jour.quotas[checks.length]||0,paie:paiePar,notes:notes||'Équipe: '+noms,createdBy:me()});
     });
     if(balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production équipe '+sachets+' sachets',createdBy:me()});
     closeM();save();render();return;
@@ -742,6 +695,8 @@ function recalcDebts() {
     let debt=c.detteInit||0;
     for(const cmd of D.commandes.filter(x=>x.client===c.name))
       debt+=cmd.reste;
+    for(const mt of D.montants.filter(x=>x.client===c.name&&x.type==='Dette reçue'))
+      debt-=mt.montant;
     c.detteCur=Math.max(0,debt);
   }
 }
@@ -955,7 +910,7 @@ function exportToExcel(section) {
   const map={
     clients:{data:D.clients,h:['Nom','Téléphone','Adresse','Dette initiale','Dette actuelle'],f:c=>[c.name,c.phone||'',c.addr||'',c.detteInit||0,c.detteCur||0]},
     commandes:{data:fil('commandes',D.commandes),h:['Client','Date','Produit','Quantité','Unité','🏀 Balles','Prix total','Payé','Reste','Statut'],f:c=>[c.client,c.date,c.produit,c.qte,c.unite||'Balle',cmdStockBalles(c),c.prixTotal,c.paye,c.reste,c.statut]},
-    productions:{data:fil('productions',D.productions),h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles','Sachets'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,prodBalles(p),p.type==='Femme'?p.reel:'']},
+    productions:{data:fil('productions',D.productions),h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles','Sachets'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,Math.floor(p.reel/50),p.type==='Femme'?p.reel:'']},
     montants:{data:fil('montants',D.montants),h:['Date','Description','Type','Client','Montant'],f:m=>[m.date,m.desc,m.type,m.client||'',m.montant]},
     depenses:{data:fil('depenses',D.depenses),h:['Date','Catégorie','Montant','Détail','Employé'],f:d=>[d.date,d.categorie,d.montant,d.detail||'',d.employe||'']},
     retraits:{data:fil('retraits',D.retraits),h:['Date','Employé','Montant','Notes'],f:r=>[r.date,r.employe,r.montant,r.notes||'']},
@@ -966,13 +921,13 @@ function exportToExcel(section) {
   // Récapitulatif financier
   const cmd=fil('commandes',D.commandes),prod=fil('productions',D.productions),mont=fil('montants',D.montants),dep=fil('depenses',D.depenses);
   const totRevenus=mont.reduce((s,m)=>s+m.montant,0),totDepenses=dep.reduce((s,d)=>s+d.montant,0);
-  const totProd=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0);
-  const cmdBalles=totalCmdBalles(cmd);
+  const prodBalles=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
+  const cmdBalles=cmd.reduce((s,c)=>s+cmdStockBalles(c),0);
   const recap=[
     ['RÉCAPITULATIF - Période',filterRange.start&&filterRange.end?`${filterRange.start} → ${filterRange.end}`:'Toute période'],
     [],['Indicateur','Valeur'],
     ['👥 Clients',D.clients.length],
-    ['🏀 Balles produites',totProd],
+    ['🏀 Balles produites',prodBalles],
     ['📦 Balles vendues',cmdBalles],
     ['💰 Total revenus',totRevenus],
     ['💸 Total dépenses',totDepenses],
@@ -1016,7 +971,6 @@ function render() {
   document.getElementById('p-analyses').innerHTML = analysesHTML();
   document.getElementById('p-employes').innerHTML = employesHTML();
   document.getElementById('p-exporter').innerHTML = exporterHTML();
-  document.getElementById('p-dettes').innerHTML = dettesHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI();
   } catch(e){console.error('Render error',e);}
@@ -1030,10 +984,8 @@ function dashHTML() {
   const totalSachets=prodsAll.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0);
   const totalBalles=Math.floor(totalSachets/50);
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
-  const cmdPeriodBalles=totalCmdBalles(cmdPeriod);
-  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0) - totalCmdBalles(D.commandes);
-  const totalDette=D.clients.reduce((s,c)=>s+(c.detteCur||0),0);
-  const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0).sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
+  const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
   const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
@@ -1060,22 +1012,13 @@ function dashHTML() {
   <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
     <div class="card tc"><div class="big" style="color:${bilan>=0?'var(--green)':'var(--red)'}">${fmt(bilan)}</div><div class="lbl">📋 Bilan net</div></div>
     <div class="card tc"><div class="big">${wkBalles}</div><div class="lbl">🏀 Balles (7j)</div></div>
-    <div class="card tc"><div class="big" style="color:var(--red)">${fmt(totalDette)}</div><div class="lbl">📌 Dettes clients</div></div>
+    <div class="card tc"><div class="big">${fmt(D.clients.reduce((s,c)=>s+(c.detteCur||0),0))}</div><div class="lbl">📌 Dettes clients</div></div>
   </div>
-  ${debiteurs.length?`<div class="card"><h2>🏦 Débiteurs</h2>
-  <div style="display:grid;gap:4px">${debiteurs.map(d=>{
-    const pctD=d.detteInit?Math.round(((d.detteInit-d.detteCur)/d.detteInit)*100):0;
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px">
-      <span><strong>${esc(d.name)}</strong> ${d.phone?`<span class="fs">${esc(d.phone)}</span>`:''}</span>
-      <span style="font-weight:700;color:var(--red);font-size:13px">${fmt(d.detteCur)}</span>
-    </div>`;
-  }).join('')}</div>
-  <div style="margin-top:8px;text-align:right"><a class="fs" onclick="nav('dettes');render()" style="cursor:pointer;color:var(--accent)">→ Voir tous les débiteurs</a></div></div>`:''}
   <div class="card"><h2>🏭 Dernières productions</h2>${prods.length?prods.map(p=>`
     <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px">
       <span>${esc(p.date)} · ${esc(prodEmps(p).join(', '))}</span>
       <span class="badge ${p.type==='Femme'?'bg-k':'bg-b'}">${esc(p.type)}</span>
-      <span>${esc(p.reel)} ${p.type==='Femme'?'sach → '+prodBalles(p)+' balles':'ball'}</span>
+      <span>${esc(p.reel)} ${p.type==='Femme'?'sach → '+Math.floor(p.reel/50)+' balles':'ball'}</span>
       <span style="font-weight:600">${fmt(p.paie)}</span>
     </div>`).join(''):'<div class="empty">Aucune production</div>'}</div>`;
 }
@@ -1102,63 +1045,34 @@ function dashCharts() {
 }
 
 function clientsHTML() {
-  return `<h1>👥 Clients</h1><p class="desc">Liste des clients</p>
+  return `<h1>👥 Clients & Dettes</h1><p class="desc">Suivi des clients — dettes et progression des paiements</p>
   <div class="toolbar"><button class="btn btn-p" onclick="clientForm()">+ Ajouter</button></div>
-  <div class="table-wrap"><table><thead><tr><th>Client</th><th>📞 Contact</th><th>💳 Dette</th><th></th></tr></thead>
-  <tbody>${D.clients.length?D.clients.sort((a,b)=>((b.detteCur||0)-a.detteCur||0)).map(c=>{
-    return `<tr${(c.detteCur||0)>0?' style="background:rgba(239,68,68,0.04);border-left:3px solid var(--red)"':''}>
-    <td><strong>${esc(c.name)}</strong>${c.phone?`<br><span class="fs">${esc(c.phone)}</span>`:''}</td>
+  <div class="table-wrap"><table><thead><tr><th>Client</th><th>📞 Contact</th><th>💳 Dette</th><th>📊 Progression</th><th>📦 Commandes</th><th></th></tr></thead>
+  <tbody>${D.clients.length?D.clients.map(c=>{
+    const cmds=D.commandes.filter(x=>x.client===c.name);
+    const pending=cmds.filter(x=>x.reste>0);
+    const totalCmd=cmds.reduce((s,x)=>s+x.prixTotal,0);
+    const payeCmd=cmds.reduce((s,x)=>s+x.paye,0);
+    const pctPaye=totalCmd>0?Math.round((payeCmd/totalCmd)*100):0;
+    const pctDette=c.detteInit>0?Math.round(((c.detteInit-(c.detteCur||0))/c.detteInit)*100):(c.detteCur>0?0:100);
+    return `<tr><td><strong>${esc(c.name)}</strong>${c.phone?`<br><span class="fs">${esc(c.phone)}</span>`:''}</td>
     <td>${esc(c.phone||'—')}</td>
     <td style="color:${(c.detteCur||0)>0?'var(--red)':'var(--green)'}">
-      <strong style="font-size:14px">${fmt(c.detteCur||0)}</strong>
-      ${(c.detteCur||0)>0?` <span class="badge bg-r">À payer</span>`:''}
+      <strong>${fmt(c.detteCur||0)}</strong>
       ${c.detteInit>0?`<br><span class="fs">Init: ${fmt(c.detteInit)}</span>`:''}
     </td>
+    <td style="min-width:120px">
+      ${c.detteInit>0?`<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px"><span class="fs">Dette</span><div class="prog" style="flex:1"><div class="prog-f" style="width:${pctDette}%;background:${pctDette>=100?'var(--green)':'var(--amber)'}"></div></div><span class="fs">${pctDette}%</span></div>`:''}
+      ${totalCmd>0?`<div style="display:flex;align-items:center;gap:4px"><span class="fs">Commandes</span><div class="prog" style="flex:1"><div class="prog-f" style="width:${pctPaye}%;background:linear-gradient(90deg,var(--accent),#a78bfa)"></div></div><span class="fs">${pctPaye}%</span></div>`:''}
+    </td>
+    <td>${pending.length?`<span style="color:var(--red);font-weight:600">${pending.length} en attente<br>${fmt(pending.reduce((s,x)=>s+x.reste,0))}</span>`:'<span style="color:var(--green)">✓ Aucune</span>'}</td>
     <td class="gap-4">
       <button class="btn btn-sm btn-gh" onclick="clientDetail(D.clients.find(x=>x.id===${c.id}))" title="Détails"><i class="ti ti-info-circle"></i></button>
       <button class="btn btn-sm btn-gh" onclick="clientForm(D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-pencil"></i></button>
       <button class="btn btn-sm btn-g" onclick="payerDette(${c.id})"><i class="ti ti-cash"></i></button>
       <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer ce client?','clients',D.clients.find(x=>x.id===${c.id}))"><i class="ti ti-trash"></i></button>
     </td></tr>`;
-  }).join(''):'<tr><td colspan="4" class="empty">Aucun client</td></tr>'}</tbody></table></div>`;
-}
-
-function dettesHTML() {
-  const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0).sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
-  const totalDette=debiteurs.reduce((s,c)=>s+(c.detteCur||0),0);
-  return `<h1>🏦 Cadran des Dettes</h1>
-  <p class="desc">Tous les clients qui doivent de l'argent à l'entreprise</p>
-  <div class="grid" style="grid-template-columns:1fr 1fr;margin-bottom:12px">
-    <div class="card tc" style="border:2px solid var(--red)"><div class="big" style="color:var(--red);font-size:2.2rem">${debiteurs.length}</div><div class="lbl">Débiteurs</div></div>
-    <div class="card tc" style="border:2px solid var(--red)"><div class="big" style="color:var(--red);font-size:2.2rem;font-weight:800">${fmt(totalDette)}</div><div class="lbl">Total dû</div></div>
-  </div>
-  ${debiteurs.length?`<div class="table-wrap"><table><thead><tr><th>#</th><th>Client</th><th>📞 Contact</th><th style="text-align:right">💳 Montant dû</th><th></th></tr></thead>
-  <tbody>${debiteurs.map((c,i)=>{
-    const pct=totalDette>0?Math.round(((c.detteCur||0)/totalDette)*100):0;
-    return `<tr>
-      <td>${i+1}</td>
-      <td><strong>${esc(c.name)}</strong></td>
-      <td>${esc(c.phone||'—')}</td>
-      <td style="text-align:right">
-        <span style="color:var(--red);font-weight:700;font-size:15px">${fmt(c.detteCur)}</span>
-        <span class="badge bg-r" style="margin-left:6px">${pct}%</span>
-      </td>
-      <td class="gap-4">
-        <button class="btn btn-sm btn-gh" onclick="clientDetail(D.clients.find(x=>x.id===${c.id}))" title="Détails"><i class="ti ti-info-circle"></i></button>
-        <button class="btn btn-sm btn-g" onclick="payerDette(${c.id})"><i class="ti ti-cash"></i></button>
-      </td></tr>`;
-  }).join('')}</tbody></table></div>
-  <div style="margin-top:12px;display:grid;gap:6px">${debiteurs.map(c=>{
-    const pct=totalDette>0?Math.round(((c.detteCur||0)/totalDette)*100):0;
-    return `<div><div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:2px">
-      <span>${esc(c.name)}</span><span style="font-weight:600;color:var(--red)">${fmt(c.detteCur)}</span>
-    </div>
-    <div class="prog" style="height:22px;background:var(--th-bg);border-radius:var(--radius)">
-      <div class="prog-f" style="width:${pct}%;background:linear-gradient(90deg,var(--red),#f87171);height:100%;border-radius:var(--radius);display:flex;align-items:center;justify-content:flex-end;padding-right:6px;box-sizing:border-box;min-width:fit-content">
-        <span style="color:#fff;font-size:10px;font-weight:600;text-shadow:0 1px 2px rgba(0,0,0,.3)">${pct}%</span>
-      </div>
-    </div></div>`;
-  }).join('')}</div>`:'<div class="empty"><br>Aucun débiteur 🎉</div>'}`;
+  }).join(''):'<tr><td colspan="6" class="empty">Aucun client</td></tr>'}</tbody></table></div>`;
 }
 
 function clientDetail(c) {
@@ -1254,7 +1168,7 @@ function prodHTML() {
     const paiePar=nb>1?Math.round(p.paie/nb):p.paie;
     const reelPar=nb>1?Math.round(p.reel/nb):p.reel;
     const quotaPar=nb>1&&p.quota?Math.round(p.quota/nb):p.quota||0;
-    const ballesPar=p.type==='Femme'?(p._ballesEq!==undefined?p._ballesEq:Math.floor(reelPar/50)):reelPar;
+    const ballesPar=p.type==='Femme'?Math.floor(reelPar/50):reelPar;
     emps.forEach(n=>{
       if(!byEmp[n])byEmp[n]={nom:n,typeEmp:p.type,totFem:0,totHom:0,totB:0,totPaie:0,moisPaie:0,totQuota:0,nbJours:0};
       const r=byEmp[n];
@@ -1308,7 +1222,7 @@ function prodHTML() {
     const reel=p.reel;
     const ec=reel-(q||0);
     const ecTxt=q!==null?ec>0?'<span style="color:var(--green)">+'+fmtN(ec)+'</span>':ec<0?'<span style="color:var(--red)">'+fmtN(ec)+'</span>':'<span style="color:var(--green)">✓</span>':'<span style="color:var(--muted)">—</span>';
-    const balles=prodBalles(p);
+    const balles=p.type==='Femme'?Math.floor(p.reel/50):p.reel;
     return `<tr><td>${esc(p.date)}</td><td style="font-weight:600">${esc(p.employes?p.employes.join(', '):'')}</td>
     <td class="tc"><span class="badge ${p.shift==='Jour'?'bg-y':'bg-b'}">${esc(p.shift)}</span></td>
     <td class="tr" style="color:var(--muted)">${q!==null?fmtN(q)+(p.type==='Femme'?' sach':' bal'):'—'}</td>
@@ -1369,9 +1283,9 @@ function stockHTML() {
   });
   // Balles: stock initial + productions - commandes (stockE/stockS ignorés)
   const initBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0);
-  const ballesProd=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0);
-  const cmdBalles=totalCmdBalles(D.commandes);
-  cur['Balles 🏀']=initBalles+ballesProd-cmdBalles;
+  const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
+  const cmdBalles=D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
+  cur['Balles 🏀']=initBalles+prodBalles-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
@@ -1424,7 +1338,7 @@ function analysesHTML() {
   const bilan=totR-totD, marge=totR?Math.round((totR-totD)/totR*100):0;
   const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
   const wk=D.productions.filter(p=>new Date(p.date)>=weekAgo&&p.type==='Femme');
-  const byDay={}; wk.forEach(p=>{const b=prodBalles(p);byDay[p.date]=(byDay[p.date]||0)+b;});
+  const byDay={}; wk.forEach(p=>{const b=Math.floor(p.reel/50);byDay[p.date]=(byDay[p.date]||0)+b;});
   const recos=[];
   if(totD>totR)recos.push('🔴 Dépenses > Revenus. Réduisez les coûts.');
   if(D.clients.some(c=>(c.detteCur||0)>0))recos.push('🟡 Relancez les clients avec dettes impayées.');
@@ -1529,24 +1443,8 @@ function seedEmployees() {
   if(added){save();render();}
 }
 
-function seedNathalie(){
-  if(D.clients.some(c=>c.name==='Nathalie'))return false;
-  D.clients.push({id:nextId++,name:'Nathalie',phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});
-  D.commandes.push({id:nextId++,date:'2026-05-18',client:'Nathalie',qte:4,unite:'Balle',prixUnitaire:25000,prixTotal:100000,paye:100000,reste:0,statut:'Payée',ballesEq:4,notes:'',createdBy:me()});
-  D.commandes.push({id:nextId++,date:'2026-05-19',client:'Nathalie',qte:17,unite:'Balle',prixUnitaire:25000,prixTotal:425000,paye:0,reste:425000,statut:'En attente',ballesEq:17,notes:'',createdBy:me()});
-  const mt1={id:nextId++,date:'2026-05-20',montant:185000,desc:'Remboursement Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:me()};
-  const mt2={id:nextId++,date:'2026-05-22',montant:40000,desc:'Remboursement Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:me()};
-  const mt3={id:nextId++,date:'2026-05-22',montant:150000,desc:'Paiement Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:me()};
-  D.montants.push(mt1,mt2,mt3);
-  const cmds=D.commandes.filter(x=>x.client==='Nathalie'&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
-  let left;
-  left=185000;for(const c of cmds){if(left<=0)break;const p=Math.min(left,c.reste);c.paye+=p;c.reste=c.prixTotal-c.paye;left-=p;if(c.reste<=0)c.statut='Payée';}
-  left=40000;for(const c of cmds){if(left<=0)break;const p=Math.min(left,c.reste);c.paye+=p;c.reste=c.prixTotal-c.paye;left-=p;if(c.reste<=0)c.statut='Payée';}
-  left=150000;for(const c of cmds){if(left<=0)break;const p=Math.min(left,c.reste);c.paye+=p;c.reste=c.prixTotal-c.paye;left-=p;if(c.reste<=0)c.statut='Payée';}
-  return true;
-}
-
-renderTabs();
+// ─── INIT ───
+renderTabs(); updateUserUI();
 loadSB().then(()=>{
   recalcDebts();save();
   document.documentElement.setAttribute('data-theme',theme);
@@ -1563,7 +1461,6 @@ loadSB().then(()=>{
   document.getElementById('p-analyses').innerHTML = analysesHTML();
   document.getElementById('p-employes').innerHTML = employesHTML();
   document.getElementById('p-exporter').innerHTML = exporterHTML();
-  document.getElementById('p-dettes').innerHTML = dettesHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI(); checkStorageSize();
   seedEmployees();
