@@ -10,7 +10,7 @@ let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
 let theme = localStorage.getItem('chips_theme')||'light';
-let userName = localStorage.getItem('chips_user')||'';
+let userName = 'admin';
 let syncStatus = 'ok';
 let _prodFilter = 'today';
 
@@ -87,21 +87,8 @@ function checkStorageSize() {
   }catch(e){}
 }
 
-function updateUserUI() {
-  const el=document.getElementById('userInfo'); if(!el)return;
-  if(userName){
-    el.innerHTML=`<span class="uav uav-n">${esc(userName).charAt(0).toUpperCase()}</span><span onclick="setUserName()">${esc(userName)}</span>`;
-    el.className='user-info logged';
-  } else {
-    el.innerHTML='<button class="btn btn-sm btn-p" onclick="setUserName()">👤 Connexion</button>';
-  }
-}
-function setUserName() {
-  const n=prompt(userName?'Changer de nom / Se deconnecter (laisser vide) :':'Entrez votre nom :',userName);
-  if(n===null)return;
-  userName=n.trim()||'';localStorage.setItem('chips_user',userName);
-  updateUserUI();render();
-}
+function updateUserUI() {}
+function setUserName() {}
 
 function toggleTheme() {
   theme = theme==='dark'?'light':'dark';
@@ -1514,7 +1501,7 @@ function seedNathalie(){
   return true;
 }
 
-renderTabs(); updateUserUI();
+renderTabs();
 loadSB().then(()=>{
   recalcDebts();save();
   document.documentElement.setAttribute('data-theme',theme);
