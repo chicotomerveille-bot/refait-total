@@ -10,14 +10,14 @@ let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
 let theme = localStorage.getItem('chips_theme')||'light';
-let userName = 'admin';
+
 let syncStatus = 'ok';
 let _prodFilter = 'today';
 
 const PAIE_FEMMES = { jour: { taux: 1800, quotas: { 1: 400, 2: 600, 3: 800, 4: 1000, 5: 1200, 6: 1400 } }, nuit: { taux: 2000 } };
 const PAIE_HOMMES = { jour: { tauxParBalle: 389, quotaParJour: 6, quotaSemaine: 36, salaireSemaineObjectif: 14000 }, nuit: { tauxParBalle: 417, quotaParJour: 6, quotaSemaine: 36, salaireSemaineObjectif: 15000 } };
 
-function me() { return userName; }
+function me() { return ''; }
 
 // ─── SCHÉMA & MIGRATION ───
 function migrateSchema() {
@@ -87,8 +87,7 @@ function checkStorageSize() {
   }catch(e){}
 }
 
-function updateUserUI() {}
-function setUserName() {}
+
 
 function toggleTheme() {
   theme = theme==='dark'?'light':'dark';
