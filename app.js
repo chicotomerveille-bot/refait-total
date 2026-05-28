@@ -5,7 +5,7 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:4, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:5, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
@@ -44,6 +44,46 @@ function migrateSchema() {
   if(cur<4){
     for(const c of D.commandes){if(c.unite===undefined)c.unite='Balle';}
     D._schemaVer=4;
+  }
+  if(cur<5){
+    const groupes={};
+    for(const p of D.productions){
+      if(p.type==='Femme'&&p._ballesEq===undefined){
+        const key=p.date+'|'+p.shift+'|'+(p.notes||'');
+        if(!groupes[key])groupes[key]=[];
+        groupes[key].push(p);
+      }
+    }
+    for(const g of Object.values(groupes)){
+      if(g.length<2)continue;
+      const total=Math.floor(g.reduce((s,p)=>s+p.reel,0)/50);
+      g.forEach((p,i)=>{p._ballesEq=i===0?total:0;});
+    }
+    // Nettoyer doublons Nathalie (seed vs saisie manuelle)
+    const nomsNat=['Nathalie','client NATHALIE'];
+    const cmdsNat=D.commandes.filter(c=>nomsNat.includes(c.client));
+    const vus=new Set();
+    D.commandes=D.commandes.filter(c=>{
+      if(!nomsNat.includes(c.client))return true;
+      const k=c.date+'|'+c.qte+'|'+c.prixTotal;
+      if(vus.has(k))return false;
+      vus.add(k);
+      return true;
+    });
+    const mtsNat=D.montants.filter(m=>nomsNat.includes(m.client));
+    const vusM=new Set();
+    D.montants=D.montants.filter(m=>{
+      if(!nomsNat.includes(m.client))return true;
+      const k=m.date+'|'+m.montant+'|'+m.type;
+      if(vusM.has(k))return false;
+      vusM.add(k);
+      return true;
+    });
+    const doublonsClients=D.clients.filter(c=>c.name==='Nathalie'&&D.clients.some(x=>x.name==='client NATHALIE'));
+    if(doublonsClients.length){
+      D.clients=D.clients.filter(c=>c.name!=='Nathalie');
+    }
+    D._schemaVer=5;
   }
 }
 
