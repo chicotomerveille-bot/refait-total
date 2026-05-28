@@ -204,6 +204,7 @@ function num(id) { return +document.getElementById(id)?.value||0; }
 function trashIt(type,item,motif) { D.trash.push({id:nextId++,type,content:item,deletedAt:Date.now(),motif:motif||'',createdBy:me()}); }
 function cleanTrash() { const S=7*86400000; const b=D.trash.length; D.trash=D.trash.filter(t=>Date.now()-t.deletedAt<S); if(D.trash.length!==b)save(); }
 function restoreT(id) { const t=D.trash.find(x=>x.id===id); if(!t)return; D[t.type].push(t.content); D.trash=D.trash.filter(x=>x.id!==id); save(); render(); }
+function prodBalles(p){return p.type!=='Femme'?p.reel:p._ballesEq!==undefined?p._ballesEq:Math.floor(p.reel/50);}
 
 // ─── CLIENT ───
 function clientForm(c) {
@@ -282,7 +283,7 @@ function execDel(type,id) {
     if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation commande '+item.client,createdBy:me()});
   }
   if(type==='productions'&&item.type==='Femme'){
-    const bles=Math.floor(item.reel/50);
+    const bles=prodBalles(item);
     if(bles>0)D.stockS.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:bles,unite:'pièce',desc:'Annulation production '+item.reel+' sachets',createdBy:me()});
   }
   trashIt(type,item,motif);
@@ -909,7 +910,7 @@ function exportToExcel(section) {
   const map={
     clients:{data:D.clients,h:['Nom','Téléphone','Adresse','Dette initiale','Dette actuelle'],f:c=>[c.name,c.phone||'',c.addr||'',c.detteInit||0,c.detteCur||0]},
     commandes:{data:fil('commandes',D.commandes),h:['Client','Date','Produit','Quantité','Unité','🏀 Balles','Prix total','Payé','Reste','Statut'],f:c=>[c.client,c.date,c.produit,c.qte,c.unite||'Balle',cmdStockBalles(c),c.prixTotal,c.paye,c.reste,c.statut]},
-    productions:{data:fil('productions',D.productions),h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles','Sachets'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,Math.floor(p.reel/50),p.type==='Femme'?p.reel:'']},
+    productions:{data:fil('productions',D.productions),h:['Date','Shift','Type','Employés','Réel','Quota','Paie','Balles','Sachets'],f:p=>[p.date,p.shift,p.type,(p.employes||[p.employe||'']).join(', '),p.reel,p.quota||'',p.paie,prodBalles(p),p.type==='Femme'?p.reel:'']},
     montants:{data:fil('montants',D.montants),h:['Date','Description','Type','Client','Montant'],f:m=>[m.date,m.desc,m.type,m.client||'',m.montant]},
     depenses:{data:fil('depenses',D.depenses),h:['Date','Catégorie','Montant','Détail','Employé'],f:d=>[d.date,d.categorie,d.montant,d.detail||'',d.employe||'']},
     retraits:{data:fil('retraits',D.retraits),h:['Date','Employé','Montant','Notes'],f:r=>[r.date,r.employe,r.montant,r.notes||'']},
@@ -920,13 +921,13 @@ function exportToExcel(section) {
   // Récapitulatif financier
   const cmd=fil('commandes',D.commandes),prod=fil('productions',D.productions),mont=fil('montants',D.montants),dep=fil('depenses',D.depenses);
   const totRevenus=mont.reduce((s,m)=>s+m.montant,0),totDepenses=dep.reduce((s,d)=>s+d.montant,0);
-  const prodBalles=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
+  const totProd=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0);
   const cmdBalles=cmd.reduce((s,c)=>s+cmdStockBalles(c),0);
   const recap=[
     ['RÉCAPITULATIF - Période',filterRange.start&&filterRange.end?`${filterRange.start} → ${filterRange.end}`:'Toute période'],
     [],['Indicateur','Valeur'],
     ['👥 Clients',D.clients.length],
-    ['🏀 Balles produites',prodBalles],
+    ['🏀 Balles produites',totProd],
     ['📦 Balles vendues',cmdBalles],
     ['💰 Total revenus',totRevenus],
     ['💸 Total dépenses',totDepenses],
@@ -985,7 +986,7 @@ function dashHTML() {
   const totalBalles=Math.floor(totalSachets/50);
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
   const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+cmdStockBalles(c),0);
-  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0) - D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
   const totalDette=D.clients.reduce((s,c)=>s+(c.detteCur||0),0);
   const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0).sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
@@ -1029,7 +1030,7 @@ function dashHTML() {
     <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px">
       <span>${esc(p.date)} · ${esc(prodEmps(p).join(', '))}</span>
       <span class="badge ${p.type==='Femme'?'bg-k':'bg-b'}">${esc(p.type)}</span>
-      <span>${esc(p.reel)} ${p.type==='Femme'?'sach → '+Math.floor(p.reel/50)+' balles':'ball'}</span>
+      <span>${esc(p.reel)} ${p.type==='Femme'?'sach → '+prodBalles(p)+' balles':'ball'}</span>
       <span style="font-weight:600">${fmt(p.paie)}</span>
     </div>`).join(''):'<div class="empty">Aucune production</div>'}</div>`;
 }
@@ -1262,7 +1263,7 @@ function prodHTML() {
     const reel=p.reel;
     const ec=reel-(q||0);
     const ecTxt=q!==null?ec>0?'<span style="color:var(--green)">+'+fmtN(ec)+'</span>':ec<0?'<span style="color:var(--red)">'+fmtN(ec)+'</span>':'<span style="color:var(--green)">✓</span>':'<span style="color:var(--muted)">—</span>';
-    const balles=p.type==='Femme'?(p._ballesEq!==undefined?p._ballesEq:Math.floor(p.reel/50)):p.reel;
+    const balles=prodBalles(p);
     return `<tr><td>${esc(p.date)}</td><td style="font-weight:600">${esc(p.employes?p.employes.join(', '):'')}</td>
     <td class="tc"><span class="badge ${p.shift==='Jour'?'bg-y':'bg-b'}">${esc(p.shift)}</span></td>
     <td class="tr" style="color:var(--muted)">${q!==null?fmtN(q)+(p.type==='Femme'?' sach':' bal'):'—'}</td>
@@ -1323,9 +1324,9 @@ function stockHTML() {
   });
   // Balles: stock initial + productions - commandes (stockE/stockS ignorés)
   const initBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0);
-  const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
+  const ballesProd=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0);
   const cmdBalles=D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
-  cur['Balles 🏀']=initBalles+prodBalles-cmdBalles;
+  cur['Balles 🏀']=initBalles+ballesProd-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
@@ -1378,7 +1379,7 @@ function analysesHTML() {
   const bilan=totR-totD, marge=totR?Math.round((totR-totD)/totR*100):0;
   const weekAgo=new Date();weekAgo.setDate(weekAgo.getDate()-7);
   const wk=D.productions.filter(p=>new Date(p.date)>=weekAgo&&p.type==='Femme');
-  const byDay={}; wk.forEach(p=>{const b=Math.floor(p.reel/50);byDay[p.date]=(byDay[p.date]||0)+b;});
+  const byDay={}; wk.forEach(p=>{const b=prodBalles(p);byDay[p.date]=(byDay[p.date]||0)+b;});
   const recos=[];
   if(totD>totR)recos.push('🔴 Dépenses > Revenus. Réduisez les coûts.');
   if(D.clients.some(c=>(c.detteCur||0)>0))recos.push('🟡 Relancez les clients avec dettes impayées.');
