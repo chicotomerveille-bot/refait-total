@@ -90,6 +90,11 @@ function migrateSchema() {
 function cmdStockBalles(c) {
   return c.unite==='Sachet' ? Math.floor(c.qte/50) : c.qte;
 }
+function totalCmdBalles(cmds) {
+  const balles=cmds.filter(c=>c.unite!=='Sachet').reduce((s,c)=>s+c.qte,0);
+  const sachets=cmds.filter(c=>c.unite==='Sachet').reduce((s,c)=>s+c.qte,0);
+  return balles+Math.floor(sachets/50);
+}
 
 // ─── SYNC STATUS ───
 function updateSyncUI() {
@@ -962,7 +967,7 @@ function exportToExcel(section) {
   const cmd=fil('commandes',D.commandes),prod=fil('productions',D.productions),mont=fil('montants',D.montants),dep=fil('depenses',D.depenses);
   const totRevenus=mont.reduce((s,m)=>s+m.montant,0),totDepenses=dep.reduce((s,d)=>s+d.montant,0);
   const totProd=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0);
-  const cmdBalles=cmd.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const cmdBalles=totalCmdBalles(cmd);
   const recap=[
     ['RÉCAPITULATIF - Période',filterRange.start&&filterRange.end?`${filterRange.start} → ${filterRange.end}`:'Toute période'],
     [],['Indicateur','Valeur'],
@@ -1025,8 +1030,8 @@ function dashHTML() {
   const totalSachets=prodsAll.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0);
   const totalBalles=Math.floor(totalSachets/50);
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
-  const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+cmdStockBalles(c),0);
-  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0) - D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const cmdPeriodBalles=totalCmdBalles(cmdPeriod);
+  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0) - totalCmdBalles(D.commandes);
   const totalDette=D.clients.reduce((s,c)=>s+(c.detteCur||0),0);
   const debiteurs=D.clients.filter(c=>(c.detteCur||0)>0).sort((a,b)=>(b.detteCur||0)-(a.detteCur||0));
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
@@ -1365,7 +1370,7 @@ function stockHTML() {
   // Balles: stock initial + productions - commandes (stockE/stockS ignorés)
   const initBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0);
   const ballesProd=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+prodBalles(p),0);
-  const cmdBalles=D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const cmdBalles=totalCmdBalles(D.commandes);
   cur['Balles 🏀']=initBalles+ballesProd-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
