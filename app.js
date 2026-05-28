@@ -1483,14 +1483,21 @@ function seedEmployees() {
   if(added){save();render();}
 }
 
-function removeNathalie(){
-  const re=/^nathalie$/i;
-  if(!D.clients.some(c=>re.test(c.name)))return;
-  D.clients=D.clients.filter(c=>!re.test(c.name));
-  D.commandes=D.commandes.filter(c=>!re.test(c.client));
-  D.montants=D.montants.filter(m=>!re.test(m.client||''));
-  D.stockS=D.stockS.filter(s=>!(s.desc||'').match(/nathalie/i));
-  save();
+function seedNathalie(){
+  if(D.clients.some(c=>c.name==='Nathalie'))return false;
+  D.clients.push({id:nextId++,name:'Nathalie',phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});
+  D.commandes.push({id:nextId++,date:'2026-05-18',client:'Nathalie',qte:4,unite:'Balle',prixUnitaire:25000,prixTotal:100000,paye:100000,reste:0,statut:'Payée',ballesEq:4,notes:'',createdBy:me()});
+  D.commandes.push({id:nextId++,date:'2026-05-19',client:'Nathalie',qte:17,unite:'Balle',prixUnitaire:25000,prixTotal:425000,paye:0,reste:425000,statut:'En attente',ballesEq:17,notes:'',createdBy:me()});
+  const mt1={id:nextId++,date:'2026-05-20',montant:185000,desc:'Remboursement Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:me()};
+  const mt2={id:nextId++,date:'2026-05-22',montant:40000,desc:'Remboursement Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:me()};
+  const mt3={id:nextId++,date:'2026-05-22',montant:150000,desc:'Paiement Nathalie',type:'Dette reçue',client:'Nathalie',createdBy:me()};
+  D.montants.push(mt1,mt2,mt3);
+  const cmds=D.commandes.filter(x=>x.client==='Nathalie'&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
+  let left;
+  left=185000;for(const c of cmds){if(left<=0)break;const p=Math.min(left,c.reste);c.paye+=p;c.reste=c.prixTotal-c.paye;left-=p;if(c.reste<=0)c.statut='Payée';}
+  left=40000;for(const c of cmds){if(left<=0)break;const p=Math.min(left,c.reste);c.paye+=p;c.reste=c.prixTotal-c.paye;left-=p;if(c.reste<=0)c.statut='Payée';}
+  left=150000;for(const c of cmds){if(left<=0)break;const p=Math.min(left,c.reste);c.paye+=p;c.reste=c.prixTotal-c.paye;left-=p;if(c.reste<=0)c.statut='Payée';}
+  return true;
 }
 
 renderTabs(); updateUserUI();
@@ -1513,5 +1520,5 @@ loadSB().then(()=>{
   document.getElementById('p-dettes').innerHTML = dettesHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI(); checkStorageSize();
-  seedEmployees(); removeNathalie();
+  const added=seedNathalie(); if(added)save(); seedEmployees();
 });
