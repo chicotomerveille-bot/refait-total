@@ -68,6 +68,54 @@ function migrateSchema() {
     D.productions = D.productions.filter(p => !toRemove.includes(p.id));
     D._schemaVer = 5;
   }
+  if(cur<6){
+    // Bug #3: Normaliser les noms clients dans montants/commandes (case-insensitive)
+    const canon = {};
+    D.clients.forEach(c => { canon[c.name.toLowerCase().trim()] = c.name; });
+    D.montants.forEach(m => {
+      if (m.client) {
+        const k = m.client.toLowerCase().trim();
+        if (canon[k] && canon[k] !== m.client) m.client = canon[k];
+      }
+    });
+    D.commandes.forEach(cmd => {
+      if (cmd.client) {
+        const k = cmd.client.toLowerCase().trim();
+        if (canon[k] && canon[k] !== cmd.client) cmd.client = canon[k];
+      }
+    });
+    // Bug #4: Dédupliquer les stockE balles production (garder 1 par jour)
+    const prodBallesParJour = {};
+    D.productions.forEach(p => {
+      if (p.type === 'Femme') {
+        prodBallesParJour[p.date] = (prodBallesParJour[p.date] || 0) + Math.floor(p.reel / 50);
+      }
+    });
+    const gardeBallProd = new Set();
+    D.stockE = D.stockE.filter(e => {
+      if (e.categorie === 'Balles 🏀' && e.desc && e.desc.includes('Production')) {
+        const bon = prodBallesParJour[e.date];
+        if (bon && e.qte !== bon) return false;
+        if (gardeBallProd.has(e.date)) return false;
+        gardeBallProd.add(e.date);
+        if (e.qte !== bon) e.qte = bon;
+        return true;
+      }
+      return true;
+    });
+    // Bug #5: Supprimer les annulations abusives dans stockS
+    D.stockS = D.stockS.filter(s => {
+      if (s.desc && s.desc.toLowerCase().includes('annulation')) return false;
+      return true;
+    });
+    D._schemaVer = 6;
+  }
+}
+
+function findClient(name) {
+  if (!name) return null;
+  const n = name.toLowerCase().trim();
+  return D.clients.find(c => c.name.toLowerCase().trim() === n) || null;
 }
 
 function cmdStockBalles(c) {
@@ -95,6 +143,10 @@ function calcSachetsRestants() {
     cumul = cumul % 50;
   }
   return cumul;
+}
+
+function calcSachetsEnStock() {
+  return D.productions.filter(p => p.type==='Femme').reduce((s, p) => s + (p.reel % 50), 0);
 }
 
 // ─── SYNC STATUS ───
@@ -384,24 +436,27 @@ function onCoQteChange() {
 }
 
 function saveCommande(id) {
-  const sel=val('coCli'), nc=val('coNew').trim(), client=sel||nc||'Client';
+  const sel=val('coCli'), nc=val('coNew').trim(), rawClient=sel||nc||'Client';
+  const cl=rawClient && !nc ? findClient(rawClient) : null;
+  const client = cl ? cl.name : rawClient;
   const date=val('coDate'), prod=val('coProd').trim()||'Chips', qte=num('coQte')||1, unite=val('coUnite')||'Balle', pu=num('coPu')||(unite==='Sachet'?500:25000);
   const pt=qte*pu, paye=num('coPaye'), stat=val('coStat');
   const ballesEq=unite==='Sachet'?Math.floor(qte/50):qte;
+  if(rawClient && !cl && !nc && !confirm('⚠️ "'+rawClient+'" ne correspond à aucun client. Continuer ?')) return;
   if(id) {
     const c=D.commandes.find(x=>x.id===id); if(!c)return;
     const oldReste=c.reste, oldClient=c.client;
     const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.unite=unite;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
-    const oldCl=D.clients.find(x=>x.name===oldClient);
+    const oldCl=findClient(oldClient);
     if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
-    let curCl=D.clients.find(x=>x.name===client);
+    let curCl=findClient(client);
     if(!curCl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});curCl=D.clients[D.clients.length-1];}
     if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
     if(diff!==0) D.montants.push({id:nextId++,date,desc:diff>0?'Acompte commande - '+client:'Correction acompte - '+client,type:'Vente',client,montant:diff,createdBy:me()});
   } else {
     D.commandes.push({id:nextId++,client,date,produit:prod,qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:stat,createdBy:me()});
     if(paye>0) D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
-    let cl=D.clients.find(x=>x.name===client);
+    let cl=findClient(client);
     if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});cl=D.clients[D.clients.length-1];}
     if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
   }
@@ -414,7 +469,7 @@ function payerCmd(id) {
   const mt=prompt('Montant versé (FCFA) :',r.toString()); if(!mt||+mt<=0)return;
   c.paye+=+mt; c.reste=c.prixTotal-c.paye; if(c.reste<=0)c.statut='Livrée';
   D.montants.push({id:nextId++,date:today(),desc:'Paiement commande - '+c.client,type:'Vente',client:c.client,montant:+mt,createdBy:me()});
-  const cl=D.clients.find(x=>x.name===c.client); if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-(+mt));
+  const cl=findClient(c.client); if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-(+mt));
   save();render();
 }
 
@@ -694,7 +749,7 @@ function saveProd(id) {
   if(id){const p=D.productions.find(x=>x.id===id);if(p){Object.assign(p,{date,shift,employes:[emp.name],type:typeEmp,reel,quota:getQuotaAttendu(typeEmp,shift,1)||0,paie,notes:val('p-notes').trim()});}}
   else {
     D.productions.push({id:nextId++,date,shift,employes:[emp.name],type:typeEmp,reel,quota:getQuotaAttendu(typeEmp,shift,1)||0,paie,notes:val('p-notes').trim(),createdBy:me()});
-    if(typeEmp==='Femme'&&balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production '+fem+' sachets',createdBy:me()});
+    if(typeEmp==='Femme'&&balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production '+reel+' sachets',createdBy:me()});
   }
   closeM();save();render();
 }
@@ -718,7 +773,10 @@ function montantForm(m) {
 
 function saveMontant(id) {
   const mt=num('mMt'); if(!mt)return alert('Montant requis');
-  const type=val('mType'), client=val('mClient');
+  const type=val('mType'), rawClient=val('mClient');
+  const cl=rawClient ? findClient(rawClient) : null;
+  const client = cl ? cl.name : rawClient;
+  if(rawClient && !cl && !confirm('⚠️ "'+rawClient+'" ne correspond à aucun client existant. Continuer ?')) return;
   if(id){const m=D.montants.find(x=>x.id===id);if(m){m.date=val('mDate');m.montant=mt;m.desc=val('mDesc');m.type=type;m.client=client;}}
   else {
     D.montants.push({id:nextId++,date:val('mDate'),montant:mt,desc:val('mDesc'),type,client,createdBy:me()});
@@ -1041,7 +1099,7 @@ function dashHTML() {
   <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
     <div class="card accent tc"><div class="big">${totalBalles}</div><div class="lbl">🏀 Balles produites</div></div>
     <div class="card tc"><div class="big">${cmdPeriodBalles}</div><div class="lbl">📦 Balles vendues</div></div>
-    <div class="card tc"><div class="big" style="color:${stockBalles>=0?'var(--green)':'var(--red)'}">${stockBalles}</div><div class="lbl">📦 Stock balles dispo${calcSachetsRestants()>0?` <span style="color:var(--amber);font-size:9px">(+${calcSachetsRestants()} sach.)</span>`:''}</div></div>
+    <div class="card tc"><div class="big" style="color:${stockBalles>=0?'var(--green)':'var(--red)'}">${stockBalles}</div><div class="lbl">📦 Stock balles dispo${calcSachetsEnStock()>0?` <span style="color:var(--amber);font-size:9px">(+${calcSachetsEnStock()} sach. prod.)</span>`:''}${calcSachetsRestants()>0?` <span style="color:var(--amber);font-size:9px">(+${calcSachetsRestants()} sach. cumul.)</span>`:''}</div></div>
   </div>
   <div class="grid">
     <div class="card"><div class="big">${D.clients.length}</div><div class="lbl">👥 Clients</div></div>
@@ -1329,13 +1387,14 @@ function stockHTML() {
   const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
   const cmdBalles=calcBallesCommandes(D.commandes);
   const sachetsRestants=calcSachetsRestants();
+  const sachetsEnStock=calcSachetsEnStock();
   cur['Balles 🏀']=initBalles+prodBalles-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
   <div class="grid">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
     <div class="big" style="font-size:20px;color:${(cur[c]||0)>=0?'var(--green)':'var(--red)'}">${cur[c]||0}</div>
-    <div class="lbl" style="font-size:10px">${c}${c==='Balles 🏀'&&sachetsRestants>0?` <span style="color:var(--amber);font-size:9px">(+${sachetsRestants} sach. en attente)</span>`:''}</div></div>`).join('')}</div>
+    <div class="lbl" style="font-size:10px">${c}${c==='Balles 🏀'?` <span style="color:var(--amber);font-size:9px">(prod: ${sachetsEnStock} sach. rest. | ventes: ${sachetsRestants} sach. cumul.)</span>`:''}</div></div>`).join('')}</div>
   ${initItems.length?`<div class="card mb-12"><h2>📋 Stock initial</h2>
   <div class="table-wrap"><table><thead><tr><th>Date</th><th>Farine</th><th>Sach. rouleaux</th><th>Sach. grand</th><th>Sach. petit</th><th>Balles 🏀</th><th></th></tr></thead>
   <tbody>${initItems.map(si=>`<tr><td>${esc(si.date)}</td><td>${si.farine||0}</td><td>${si.sachetsR||0}</td><td>${si.sachetsG||0}</td><td>${si.sachetsP||0}</td><td>${si.balles||0}</td>
