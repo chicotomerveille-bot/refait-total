@@ -45,10 +45,56 @@ function migrateSchema() {
     for(const c of D.commandes){if(c.unite===undefined)c.unite='Balle';}
     D._schemaVer=4;
   }
+  if(cur<5){
+    // Fusionner les anciennes entrées multi (N entrées individuelles → 1 session)
+    const groups = {};
+    const toRemove = [];
+    for (const p of D.productions) {
+      if (p.type==='Femme' && p.employes && p.employes.length===1 && p.notes && p.notes.startsWith('Équipe:')) {
+        const key = p.date + '|' + p.shift + '|' + p.notes;
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(p);
+      }
+    }
+    for (const entries of Object.values(groups)) {
+      if (entries.length < 2) continue;
+      const [first] = entries;
+      const allNames = entries.map(e => e.employes[0]);
+      const totalSachets = first.reel;
+      const totalPaie = entries.reduce((s, e) => s + e.paie, 0);
+      D.productions.push({id:nextId++, date:first.date, shift:first.shift, employes:allNames, type:'Femme', reel:totalSachets, quota:first.quota, paie:totalPaie, notes:first.notes, createdBy:first.createdBy});
+      entries.forEach(e => toRemove.push(e.id));
+    }
+    D.productions = D.productions.filter(p => !toRemove.includes(p.id));
+    D._schemaVer = 5;
+  }
 }
 
 function cmdStockBalles(c) {
   return c.unite==='Sachet' ? Math.floor(c.qte/50) : c.qte;
+}
+
+function calcBallesCommandes(cmds) {
+  const ballesDirectes = cmds.filter(c => c.unite!=='Sachet').reduce((s,c) => s+c.qte, 0);
+  const sachets = cmds.filter(c => c.unite==='Sachet').sort((a,b) => a.date.localeCompare(b.date) || a.id-b.id);
+  let cumul = 0, ballesSachets = 0;
+  for (const c of sachets) {
+    cumul += c.qte;
+    const d = Math.floor(cumul / 50);
+    ballesSachets += d;
+    cumul = cumul % 50;
+  }
+  return ballesDirectes + ballesSachets;
+}
+
+function calcSachetsRestants() {
+  const sachets = D.commandes.filter(c => c.unite==='Sachet').sort((a,b) => a.date.localeCompare(b.date) || a.id-b.id);
+  let cumul = 0;
+  for (const c of sachets) {
+    cumul += c.qte;
+    cumul = cumul % 50;
+  }
+  return cumul;
 }
 
 // ─── SYNC STATUS ───
@@ -61,7 +107,7 @@ function updateSyncUI() {
 }
 function saveSB() {
   syncStatus='saving';updateSyncUI();
-  if(!SB){syncStatus='ok';updateSyncUI();return Promise.resolve();}
+  if(!SB){syncStatus='error';updateSyncUI();return Promise.resolve();}
   return SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then(()=>{syncStatus='ok';updateSyncUI();}).catch(()=>{
     // Retry once
     return SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then(()=>{syncStatus='ok';updateSyncUI();}).catch(()=>{syncStatus='error';updateSyncUI();});
@@ -185,6 +231,9 @@ function nav(p) {
   const pt=document.getElementById('pageTitleMob');
   if(pt)pt.textContent=labels[p]||p;
   closeNav();
+  if(document.getElementById('mobileNav')?.classList.contains('o')) {
+    document.getElementById('mobileNav').classList.remove('o');
+  }
 }
 function toggleNav() { const mn=document.getElementById('mobileNav'); mn.classList.toggle('o'); }
 function closeNav() { document.getElementById('mobileNav').classList.remove('o'); }
@@ -278,12 +327,11 @@ function execDel(type,id) {
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
-    const b=cmdStockBalles(item);
-    if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation commande '+item.client,createdBy:me()});
   }
   if(type==='productions'&&item.type==='Femme'){
-    const bles=Math.floor(item.reel/50);
-    if(bles>0)D.stockS.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:bles,unite:'pièce',desc:'Annulation production '+item.reel+' sachets',createdBy:me()});
+    // Production annulée: on ne rend pas les balles au stock car le calcul stockBalles
+    // se base sur la somme des productions actuelles. En supprimant la production,
+    // le stock remonte naturellement.
   }
   trashIt(type,item,motif);
   D[type]=D[type].filter(x=>x.id!==id);
@@ -342,9 +390,8 @@ function saveCommande(id) {
   const ballesEq=unite==='Sachet'?Math.floor(qte/50):qte;
   if(id) {
     const c=D.commandes.find(x=>x.id===id); if(!c)return;
-    const oldReste=c.reste, oldClient=c.client, oldBalles=cmdStockBalles(c);
+    const oldReste=c.reste, oldClient=c.client;
     const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.unite=unite;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
-    if(ballesEq!==oldBalles){const dq=ballesEq-oldBalles;if(dq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:dq,unite:'pièce',desc:'Ajustement commande '+client,createdBy:me()});else D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:-dq,unite:'pièce',cout:0,desc:'Ajustement commande '+client,createdBy:me()});}
     const oldCl=D.clients.find(x=>x.name===oldClient);
     if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
     let curCl=D.clients.find(x=>x.name===client);
@@ -357,7 +404,6 @@ function saveCommande(id) {
     let cl=D.clients.find(x=>x.name===client);
     if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});cl=D.clients[D.clients.length-1];}
     if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
-    if(ballesEq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:ballesEq,unite:'pièce',desc:'Commande '+client,createdBy:me()});
   }
   closeM();save();render();
 }
@@ -504,17 +550,18 @@ function calcMultiProdPaie() {
   const shift=shiftVal();
   const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
   document.getElementById('p-multi-sachets-grp').style.display='';
-  let paiePar;
+  let totalPaie;
   if(shift==='Nuit'){
-    paiePar=PAIE_FEMMES.nuit.taux;
+    totalPaie = PAIE_FEMMES.nuit.taux * nb;
   } else {
     if(!sachets){document.getElementById('p-paie-result').style.display='none';return;}
     const quota=PAIE_FEMMES.jour.quotas[nb]||(nb*300);
-    paiePar=Math.round((sachets/quota)*PAIE_FEMMES.jour.taux);
+    totalPaie = Math.round((sachets / quota) * PAIE_FEMMES.jour.taux * nb);
   }
+  const paiePar = Math.round(totalPaie / nb);
   const balles=sachets>0?Math.floor(sachets/50):0;
   document.getElementById('p-balles-preview').textContent=fmtN(balles)+' balles ('+fmtN(sachets)+' ÷ 50)';
-  document.getElementById('p-paie-calc').textContent=fmt(paiePar*nb);
+  document.getElementById('p-paie-calc').textContent = fmt(totalPaie);
   document.getElementById('p-paie-result').style.display='';
   const dl=document.getElementById('p-multi-paie-detail');dl.style.display='';
   document.getElementById('p-multi-paie-list').innerHTML=[].map.call(checks,c=>
@@ -624,15 +671,13 @@ function saveProd(id) {
     if(checks.length<2)return alert('Sélectionnez au moins 2 employées');
     const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
     const notes=val('p-notes').trim();
-    let paiePar;
-    if(shift==='Nuit') paiePar=PAIE_FEMMES.nuit.taux;
-    else {const quota=PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300);if(!sachets)return alert('Nombre de sachets requis');paiePar=Math.round((sachets/quota)*PAIE_FEMMES.jour.taux);}
+    if(!sachets && shift!=='Nuit') return alert('Nombre de sachets requis');
     const balles=sachets>0?Math.floor(sachets/50):0;
     const noms=[].map.call(checks,c=>c.value).join(', ');
+    const empNames=[].map.call(checks,c=>c.value);
+    const totalPaie = shift==='Nuit' ? PAIE_FEMMES.nuit.taux * checks.length : Math.round((sachets / (PAIE_FEMMES.jour.quotas[checks.length]||(checks.length*300))) * PAIE_FEMMES.jour.taux * checks.length);
     if(id){const idx=D.productions.findIndex(x=>x.id===id);if(idx>=0)D.productions.splice(idx,1);}
-    [].forEach.call(checks,emp=>{
-      D.productions.push({id:nextId++,date,shift,employes:[emp.value],type:'Femme',reel:sachets,quota:PAIE_FEMMES.jour.quotas[checks.length]||0,paie:paiePar,notes:notes||'Équipe: '+noms,createdBy:me()});
-    });
+    D.productions.push({id:nextId++,date,shift,employes:empNames,type:'Femme',reel:sachets,quota:PAIE_FEMMES.jour.quotas[checks.length]||0,paie:totalPaie,notes:notes||'Équipe: '+noms,createdBy:me()});
     if(balles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:balles,unite:'pièce',cout:0,desc:'Production équipe '+sachets+' sachets',createdBy:me()});
     closeM();save();render();return;
   }
@@ -695,8 +740,6 @@ function recalcDebts() {
     let debt=c.detteInit||0;
     for(const cmd of D.commandes.filter(x=>x.client===c.name))
       debt+=cmd.reste;
-    for(const mt of D.montants.filter(x=>x.client===c.name&&x.type==='Dette reçue'))
-      debt-=mt.montant;
     c.detteCur=Math.max(0,debt);
   }
 }
@@ -922,7 +965,7 @@ function exportToExcel(section) {
   const cmd=fil('commandes',D.commandes),prod=fil('productions',D.productions),mont=fil('montants',D.montants),dep=fil('depenses',D.depenses);
   const totRevenus=mont.reduce((s,m)=>s+m.montant,0),totDepenses=dep.reduce((s,d)=>s+d.montant,0);
   const prodBalles=prod.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
-  const cmdBalles=cmd.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const cmdBalles=calcBallesCommandes(cmd);
   const recap=[
     ['RÉCAPITULATIF - Période',filterRange.start&&filterRange.end?`${filterRange.start} → ${filterRange.end}`:'Toute période'],
     [],['Indicateur','Valeur'],
@@ -984,8 +1027,8 @@ function dashHTML() {
   const totalSachets=prodsAll.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0);
   const totalBalles=Math.floor(totalSachets/50);
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
-  const cmdPeriodBalles=cmdPeriod.reduce((s,c)=>s+cmdStockBalles(c),0);
-  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const cmdPeriodBalles=calcBallesCommandes(cmdPeriod);
+  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0) - calcBallesCommandes(D.commandes);
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
   const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
@@ -998,7 +1041,7 @@ function dashHTML() {
   <div class="grid" style="grid-template-columns:1fr 1fr 1fr">
     <div class="card accent tc"><div class="big">${totalBalles}</div><div class="lbl">🏀 Balles produites</div></div>
     <div class="card tc"><div class="big">${cmdPeriodBalles}</div><div class="lbl">📦 Balles vendues</div></div>
-    <div class="card tc"><div class="big" style="color:${stockBalles>=0?'var(--green)':'var(--red)'}">${stockBalles}</div><div class="lbl">📦 Stock balles dispo</div></div>
+    <div class="card tc"><div class="big" style="color:${stockBalles>=0?'var(--green)':'var(--red)'}">${stockBalles}</div><div class="lbl">📦 Stock balles dispo${calcSachetsRestants()>0?` <span style="color:var(--amber);font-size:9px">(+${calcSachetsRestants()} sach.)</span>`:''}</div></div>
   </div>
   <div class="grid">
     <div class="card"><div class="big">${D.clients.length}</div><div class="lbl">👥 Clients</div></div>
@@ -1284,14 +1327,15 @@ function stockHTML() {
   // Balles: stock initial + productions - commandes (stockE/stockS ignorés)
   const initBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0);
   const prodBalles=D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+Math.floor(p.reel/50),0);
-  const cmdBalles=D.commandes.reduce((s,c)=>s+cmdStockBalles(c),0);
+  const cmdBalles=calcBallesCommandes(D.commandes);
+  const sachetsRestants=calcSachetsRestants();
   cur['Balles 🏀']=initBalles+prodBalles-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
   <div class="grid">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
     <div class="big" style="font-size:20px;color:${(cur[c]||0)>=0?'var(--green)':'var(--red)'}">${cur[c]||0}</div>
-    <div class="lbl" style="font-size:10px">${c}</div></div>`).join('')}</div>
+    <div class="lbl" style="font-size:10px">${c}${c==='Balles 🏀'&&sachetsRestants>0?` <span style="color:var(--amber);font-size:9px">(+${sachetsRestants} sach. en attente)</span>`:''}</div></div>`).join('')}</div>
   ${initItems.length?`<div class="card mb-12"><h2>📋 Stock initial</h2>
   <div class="table-wrap"><table><thead><tr><th>Date</th><th>Farine</th><th>Sach. rouleaux</th><th>Sach. grand</th><th>Sach. petit</th><th>Balles 🏀</th><th></th></tr></thead>
   <tbody>${initItems.map(si=>`<tr><td>${esc(si.date)}</td><td>${si.farine||0}</td><td>${si.sachetsR||0}</td><td>${si.sachetsG||0}</td><td>${si.sachetsP||0}</td><td>${si.balles||0}</td>
