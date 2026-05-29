@@ -5,7 +5,7 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:7, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:8, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
@@ -116,11 +116,20 @@ function migrateSchema() {
     for(const cmd of D.commandes){
       const b=cmdStockBalles(cmd);
       if(b>0 && !stockSDesc.has(('Commande '+cmd.client).toLowerCase())){
-        D.stockS.push({id:nextId++,date:cmd.date,categorie:'Balles 🏀',qte:b,unite:'pièce',desc:'Commande '+cmd.client+' — '+cmd.qte+' '+(cmd.unite||'Balle'),createdBy:cmd.createdBy||'admin'});
+        D.stockS.push({id:nextId++,date:cmd.date,categorie:'Balles 🏀',qte:b,unite:'pièce',desc:'Commande #'+cmd.id+' — '+cmd.client+' — '+cmd.qte+' '+(cmd.unite||'Balle'),createdBy:cmd.createdBy||'admin'});
         stockSDesc.add(('Commande '+cmd.client).toLowerCase());
       }
     }
     D._schemaVer = 7;
+  }
+  if(cur<8){
+    // Nettoyer les stockS v7 buggés (1 par client au lieu de 1 par commande) et les recréer
+    D.stockS = D.stockS.filter(s => !(s.categorie==='Balles 🏀' && (s.desc||'').startsWith('Commande ')));
+    for(const cmd of D.commandes){
+      const b=cmdStockBalles(cmd);
+      if(b>0) D.stockS.push({id:nextId++,date:cmd.date,categorie:'Balles 🏀',qte:b,unite:'pièce',desc:'Commande #'+cmd.id+' — '+cmd.client+' — '+cmd.qte+' '+(cmd.unite||'Balle'),createdBy:cmd.createdBy||'admin'});
+    }
+    D._schemaVer = 8;
   }
 }
 
@@ -1565,7 +1574,7 @@ function exporterHTML() {
 function resetApp() {
   if(!confirm('⚠️ SUPPRIMER TOUTES LES DONNÉES ? Cette action est irréversible.'))return;
   if(!confirm('⚠️⚠️ Confirmer : plus aucun client, commande, production ni paie ne sera conservé.'))return;
-  D = { _schemaVer:7, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+  D = { _schemaVer:8, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
   nextId = 1; save(); render();
   alert('✅ Application réinitialisée. Toutes les données ont été effacées.');
 }
