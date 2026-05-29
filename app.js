@@ -1231,8 +1231,18 @@ function clientDetail(c) {
 
 function commandesHTML() {
   const cmdList=D.commandes.filter(c=>inRange(c.date));
+  const totalBallesCmd=calcBallesCommandes(D.commandes);
+  const ballesDirectes=D.commandes.filter(c=>c.unite!=='Sachet').reduce((s,c)=>s+c.qte,0);
+  const ballesViaSachets=totalBallesCmd-ballesDirectes;
+  const sachetsEnAttente=calcSachetsRestants();
   return `<h1>🛒 Commandes</h1>
   <p class="desc">Suivi des commandes clients. ${!filterRange.start&&!filterRange.end?'':cmdList.length+' sur la période'}</p>
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:12px">
+    <div class="card tc"><div class="big">${totalBallesCmd}</div><div class="lbl">🏀 Balles vendues (total)</div></div>
+    <div class="card tc"><div class="big">${ballesDirectes}</div><div class="lbl">📦 Balles directes</div></div>
+    <div class="card tc"><div class="big">${ballesViaSachets}</div><div class="lbl">🔄 Balles via sachets</div></div>
+    <div class="card tc"><div class="big" style="color:${sachetsEnAttente>0?'var(--amber)':'var(--green)'}">${sachetsEnAttente}</div><div class="lbl">🧮 Sachets non convertis</div></div>
+  </div>
   <div class="toolbar"><button class="btn btn-p" onclick="commandeForm()">+ Nouvelle</button></div>
   <div class="table-wrap">
   <table>
