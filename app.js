@@ -1291,19 +1291,21 @@ function commandesHTML() {
   const ballesDirectes=D.commandes.filter(c=>c.unite!=='Sachet').reduce((s,c)=>s+c.qte,0);
   const ballesViaSachets=totalBallesCmd-ballesDirectes;
   const sachetsEnAttente=calcSachetsRestants();
+  const totalSachetsEq=totalBallesCmd*50+sachetsEnAttente;
   return `<h1>🛒 Commandes</h1>
   <p class="desc">Suivi des commandes clients. ${!filterRange.start&&!filterRange.end?'':cmdList.length+' sur la période'}</p>
-  <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:12px">
+  <div class="grid" style="grid-template-columns:1fr 1fr 1fr 1fr 1fr;margin-bottom:12px">
     <div class="card tc"><div class="big">${totalBallesCmd}</div><div class="lbl">🏀 Balles vendues (total)</div></div>
     <div class="card tc"><div class="big">${ballesDirectes}</div><div class="lbl">📦 Balles directes</div></div>
     <div class="card tc"><div class="big">${ballesViaSachets}</div><div class="lbl">🔄 Balles via sachets</div></div>
     <div class="card tc"><div class="big" style="color:${sachetsEnAttente>0?'var(--amber)':'var(--green)'}">${sachetsEnAttente}</div><div class="lbl">🧮 Sachets non convertis</div></div>
+    <div class="card tc"><div class="big">${fmtN(totalSachetsEq)}</div><div class="lbl">🧮 Total sachets (équiv.)</div></div>
   </div>
   <div class="toolbar"><button class="btn btn-p" onclick="commandeForm()">+ Nouvelle</button></div>
   <div class="table-wrap">
   <table>
     <thead><tr>
-      <th>Client</th><th>Produit</th><th>Qté</th><th>🏀 Stock</th><th>Total</th><th>✅ Payé</th><th>⏳ Reste</th><th>Statut</th><th>Actions</th>
+      <th>Client</th><th>Produit</th><th>Qté</th><th>📦 Sachets</th><th>🏀 Stock</th><th>Total</th><th>✅ Payé</th><th>⏳ Reste</th><th>Statut</th><th>Actions</th>
     </tr></thead>
     <tbody>${
       cmdList.length
@@ -1312,10 +1314,12 @@ function commandesHTML() {
           const un=c.unite||'Balle';
           const bEq=cmdStockBalles(c);
           const qteLabel=un==='Sachet'?c.qte+' sach':c.qte+' bal';
+          const sachEq=un==='Sachet'?c.qte:c.qte*50;
           return `<tr>
             <td>${esc(c.client)}<br><span class="fs">${esc(c.date)}</span></td>
             <td>${esc(c.produit)}</td>
             <td><strong>${qteLabel}</strong></td>
+            <td style="color:var(--accent);font-weight:600">${fmtN(sachEq)}</td>
             <td style="color:var(--orange);font-weight:600">${bEq>0?'🏀 '+bEq:'<span class="fs">—</span>'}</td>
             <td><strong>${fmt(c.prixTotal)}</strong></td>
             <td style="color:var(--green)">${fmt(c.paye)}</td>
@@ -1328,7 +1332,7 @@ function commandesHTML() {
             </td>
           </tr>`;
         }).join('')
-      : '<tr><td colspan="9" class="empty">Aucune commande</td></tr>'
+      : '<tr><td colspan="10" class="empty">Aucune commande</td></tr>'
     }</tbody>
   </table>
   </div>`;
