@@ -5,7 +5,7 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:8, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:9, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
@@ -130,6 +130,24 @@ function migrateSchema() {
       if(b>0) D.stockS.push({id:nextId++,date:cmd.date,categorie:'Balles 🏀',qte:b,unite:'pièce',desc:'Commande #'+cmd.id+' — '+cmd.client+' — '+cmd.qte+' '+(cmd.unite||'Balle'),createdBy:cmd.createdBy||'admin'});
     }
     D._schemaVer = 8;
+  }
+  if(cur<9){
+    // Rebuild all commande stockS with cumulative sachet tracking
+    D.stockS=D.stockS.filter(s=>!(s.categorie==='Balles 🏀' && (s.desc||'').startsWith('Commande ')));
+    const sorted=[...D.commandes].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+    for(const cmd of sorted){
+      if(cmd.unite!=='Sachet' && cmd.qte>0){
+        D.stockS.push({id:nextId++,date:cmd.date,categorie:'Balles 🏀',qte:cmd.qte,unite:'pièce',desc:'Commande #'+cmd.id+' — '+cmd.client+' — '+cmd.qte+' Balle',createdBy:cmd.createdBy||'admin'});
+      }
+    }
+    let cumul=0;
+    for(const cmd of sorted){if(cmd.unite==='Sachet') cumul+=cmd.qte;}
+    const ballesSach=Math.floor(cumul/50);
+    if(ballesSach>0){
+      const lastSach=[...sorted].filter(c=>c.unite==='Sachet').pop();
+      D.stockS.push({id:nextId++,date:lastSach?lastSach.date:today(),categorie:'Balles 🏀',qte:ballesSach,unite:'pièce',desc:'Commande sachets cumulés — '+ballesSach+' balles',createdBy:'system'});
+    }
+    D._schemaVer=9;
   }
 }
 
@@ -283,8 +301,29 @@ async function loadSB() {
     nextId = all.reduce((m,x)=>Math.max(m,x.id||0),0)+1;
   } catch(_){load()}
 }
+function recalcCmdStockS() {
+  // Rebuild all commande-related stockS balles entries from scratch
+  // Balle-unite commandes: one entry each; sachet-unite: aggregate from running cumulative
+  D.stockS = D.stockS.filter(s => !(s.categorie==='Balles 🏀' && (s.desc||'').startsWith('Commande ')));
+  const sorted=[...D.commandes].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  for(const cmd of sorted){
+    if(cmd.unite!=='Sachet' && cmd.qte>0){
+      D.stockS.push({id:nextId++,date:cmd.date,categorie:'Balles 🏀',qte:cmd.qte,unite:'pièce',desc:'Commande #'+cmd.id+' — '+cmd.client+' — '+cmd.qte+' Balle',createdBy:cmd.createdBy||'admin'});
+    }
+  }
+  let cumul=0;
+  for(const cmd of sorted){
+    if(cmd.unite==='Sachet') cumul+=cmd.qte;
+  }
+  const ballesSach=Math.floor(cumul/50);
+  if(ballesSach>0){
+    const lastSach=[...sorted].filter(c=>c.unite==='Sachet').pop();
+    D.stockS.push({id:nextId++,date:lastSach?lastSach.date:today(),categorie:'Balles 🏀',qte:ballesSach,unite:'pièce',desc:'Commande sachets cumulés — '+ballesSach+' balles',createdBy:'system'});
+  }
+}
 function save() {
   recalcDebts();
+  recalcCmdStockS();
   localStorage.setItem(K,JSON.stringify(D));
   saveSB();
   checkStorageSize();
@@ -401,13 +440,6 @@ function execDel(type,id) {
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
-    const b=cmdStockBalles(item);
-    if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation suppression commande '+item.client,createdBy:me()});
-  }
-  if(type==='productions'&&item.type==='Femme'){
-    // Production annulée: on ne rend pas les balles au stock car le calcul stockBalles
-    // se base sur la somme des productions actuelles. En supprimant la production,
-    // le stock remonte naturellement.
   }
   trashIt(type,item,motif);
   D[type]=D[type].filter(x=>x.id!==id);
@@ -465,11 +497,10 @@ function saveCommande(id) {
   const client = cl ? cl.name : rawClient;
   const date=val('coDate'), prod=val('coProd').trim()||'Chips', qte=num('coQte')||1, unite=val('coUnite')||'Balle', pu=num('coPu')||(unite==='Sachet'?500:25000);
   const pt=qte*pu, paye=num('coPaye'), stat=val('coStat');
-  const ballesEq=unite==='Sachet'?Math.floor(qte/50):qte;
   if(rawClient && !cl && !nc && !confirm('⚠️ "'+rawClient+'" ne correspond à aucun client. Continuer ?')) return;
   if(id) {
     const c=D.commandes.find(x=>x.id===id); if(!c)return;
-    const oldReste=c.reste, oldClient=c.client, oldBalles=cmdStockBalles(c);
+    const oldReste=c.reste, oldClient=c.client;
     const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.unite=unite;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
     const oldCl=findClient(oldClient);
     if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
@@ -477,15 +508,12 @@ function saveCommande(id) {
     if(!curCl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});curCl=D.clients[D.clients.length-1];}
     if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
     if(diff!==0) D.montants.push({id:nextId++,date,desc:diff>0?'Acompte commande - '+client:'Correction acompte - '+client,type:'Vente',client,montant:diff,createdBy:me()});
-    if(oldBalles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:oldBalles,unite:'pièce',cout:0,desc:'Annulation modif commande '+oldClient,createdBy:me()});
-    if(ballesEq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:ballesEq,unite:'pièce',desc:'Commande modifiée '+client+' — '+qte+' '+unite,createdBy:me()});
   } else {
     D.commandes.push({id:nextId++,client,date,produit:prod,qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:stat,createdBy:me()});
     if(paye>0) D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
     let cl=findClient(client);
     if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});cl=D.clients[D.clients.length-1];}
     if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
-    if(ballesEq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:ballesEq,unite:'pièce',desc:'Commande '+client+' — '+qte+' '+unite,createdBy:me()});
   }
   closeM();save();render();
 }
@@ -1574,7 +1602,7 @@ function exporterHTML() {
 function resetApp() {
   if(!confirm('⚠️ SUPPRIMER TOUTES LES DONNÉES ? Cette action est irréversible.'))return;
   if(!confirm('⚠️⚠️ Confirmer : plus aucun client, commande, production ni paie ne sera conservé.'))return;
-  D = { _schemaVer:8, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+  D = { _schemaVer:9, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
   nextId = 1; save(); render();
   alert('✅ Application réinitialisée. Toutes les données ont été effacées.');
 }
