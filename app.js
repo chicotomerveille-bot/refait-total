@@ -594,6 +594,11 @@ function calcProdPaie() {
     r3.innerHTML='📐 1 balle → '+(shift==='Nuit'?'417':'389')+' FCFA | '+fmtN(hom)+' balles → <strong>'+fmt(paie)+'</strong>';
   else r3.style.display='none';
   const balles=typeEmp==='Femme'?Math.floor(fem/50):hom;
+  const soloLive=document.getElementById('p-solo-balles-live');
+  if(soloLive){
+    if(balles>0){soloLive.style.display='';soloLive.innerHTML='🏀 <strong>'+balles+'</strong> balle'+(balles>1?'s':'')+' <span style="color:var(--muted);font-size:11px;font-weight:400">('+fmtN(reel)+' sach ÷ 50)</span>';}
+    else soloLive.style.display='none';
+  }
   document.getElementById('p-balles-preview').textContent=typeEmp==='Femme'?fmtN(balles)+' balles ('+fmtN(fem)+' ÷ 50)':fmtN(hom)+' balles';
   document.getElementById('p-paie-calc').textContent=fmt(paie);
   document.getElementById('p-paie-result').style.display='';
@@ -604,6 +609,12 @@ function calcMultiProdPaie() {
   if(nb<2){document.getElementById('p-paie-result').style.display='none';return;}
   const shift=shiftVal();
   const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
+  const multiLive=document.getElementById('p-multi-balles-live');
+  const balles=sachets>0?Math.floor(sachets/50):0;
+  if(multiLive){
+    if(balles>0){multiLive.style.display='';multiLive.innerHTML='🏀 <strong>'+balles+'</strong> balle'+(balles>1?'s':'')+' <span style="color:var(--muted);font-size:11px;font-weight:400">('+fmtN(sachets)+' sach ÷ 50)</span>';}
+    else multiLive.style.display='none';
+  }
   document.getElementById('p-multi-sachets-grp').style.display='';
   let totalPaie;
   if(shift==='Nuit'){
@@ -614,7 +625,6 @@ function calcMultiProdPaie() {
     totalPaie = Math.round((sachets / quota) * PAIE_FEMMES.jour.taux * nb);
   }
   const paiePar = Math.round(totalPaie / nb);
-  const balles=sachets>0?Math.floor(sachets/50):0;
   document.getElementById('p-balles-preview').textContent=fmtN(balles)+' balles ('+fmtN(sachets)+' ÷ 50)';
   document.getElementById('p-paie-calc').textContent = fmt(totalPaie);
   document.getElementById('p-paie-result').style.display='';
@@ -643,7 +653,8 @@ function prodForm(p) {
     <div id="p-solo-section" style="display:grid;gap:.7rem">
       <div class="m-row"><div><label>Employé</label><select id="p-employe" onchange="onProdEmployeChange()"><option value="">— Choisir —</option>${empOpts}</select></div>
       <div id="p-quota-info-grp" style="display:none"><label>Quota attendu</label><div id="p-quota-info" style="padding:.6rem .8rem;background:var(--hover);border-radius:.55rem;font-weight:600;font-size:.82rem">—</div></div></div>
-      <div class="m-row"><div id="p-fem-grp"><label>Sachets produits 👩</label><input type="number" id="p-fem" value="${e&&p.type==='Femme'?p.reel:''}" oninput="calcProdPaie()" /></div>
+      <div class="m-row"><div id="p-fem-grp"><label>Sachets produits 👩</label><input type="number" id="p-fem" value="${e&&p.type==='Femme'?p.reel:''}" oninput="calcProdPaie()" />
+      <div id="p-solo-balles-live" style="font-size:13px;font-weight:700;color:var(--orange);margin-top:4px;display:none">🏀 0 balle</div></div>
       <div id="p-hom-grp" style="display:none"><label>Balles produites 👨</label><input type="number" id="p-hom" value="${e&&p.type==='Homme'?p.reel:''}" oninput="calcProdPaie()" /></div></div>
     </div>
 
@@ -662,6 +673,7 @@ function prodForm(p) {
       </div>
       <div id="p-multi-sachets-grp" style="display:none;margin-bottom:.5rem">
         <label>Sachets totaux produits</label><input type="number" id="p-multi-sachets" oninput="calcMultiProdPaie()" />
+        <div id="p-multi-balles-live" style="font-size:13px;font-weight:700;color:var(--orange);margin-top:4px;display:none">🏀 0 balle</div>
       </div>
     </div>
 
