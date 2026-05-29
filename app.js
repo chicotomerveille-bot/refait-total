@@ -1520,7 +1520,20 @@ function exporterHTML() {
   <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-bottom:1rem">${sections.map(([k,label,cls])=>`<button class="btn ${cls}" onclick="exportToExcel('${k}')" style="justify-content:center;padding:.8rem">${label}</button>`).join('')}</div>
   <div class="card"><h2>📋 Export JSON (sauvegarde brute)</h2><p class="desc">Pour restauration future</p>
   <button class="btn btn-p" onclick="exportData()"><i class="ti ti-download"></i> Exporter JSON</button></div>
-  <div class="card mt-12"><h2>Aperçu</h2><pre style="font-size:11px;max-height:300px;overflow:auto;background:var(--bg);padding:10px;border-radius:8px">${JSON.stringify(D,null,2).slice(0,2000)}...</pre></div>`;
+  <div class="card mt-12"><h2>Aperçu</h2><pre style="font-size:11px;max-height:300px;overflow:auto;background:var(--bg);padding:10px;border-radius:8px">${JSON.stringify(D,null,2).slice(0,2000)}...</pre></div>
+  <div class="card" style="border-color:var(--red)">
+    <h2 style="color:var(--red)">🗑️ Réinitialiser l'application</h2>
+    <p class="desc">Supprime toutes les données (clients, commandes, productions, etc.)</p>
+    <button class="btn btn-r" onclick="resetApp()"><i class="ti ti-trash"></i> Tout effacer</button>
+  </div>`;
+}
+
+function resetApp() {
+  if(!confirm('⚠️ SUPPRIMER TOUTES LES DONNÉES ? Cette action est irréversible.'))return;
+  if(!confirm('⚠️⚠️ Confirmer : plus aucun client, commande, production ni paie ne sera conservé.'))return;
+  D = { _schemaVer:6, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+  nextId = 1; save(); render();
+  alert('✅ Application réinitialisée. Toutes les données ont été effacées.');
 }
 
 function corbeilleHTML() {
@@ -1578,5 +1591,5 @@ loadSB().then(()=>{
   document.getElementById('p-exporter').innerHTML = exporterHTML();
   document.getElementById('p-corbeille').innerHTML = corbeilleHTML();
   dashCharts(); updateSyncUI(); checkStorageSize();
-  seedEmployees();
+  // seedEmployees();
 });
