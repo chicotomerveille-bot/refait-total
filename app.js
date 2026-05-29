@@ -594,10 +594,13 @@ function calcProdPaie() {
     r3.innerHTML='📐 1 balle → '+(shift==='Nuit'?'417':'389')+' FCFA | '+fmtN(hom)+' balles → <strong>'+fmt(paie)+'</strong>';
   else r3.style.display='none';
   const balles=typeEmp==='Femme'?Math.floor(fem/50):hom;
+  const resteSach=typeEmp==='Femme'?fem%50:0;
   const soloLive=document.getElementById('p-solo-balles-live');
   if(soloLive){
-    if(balles>0){soloLive.style.display='';soloLive.innerHTML='🏀 <strong>'+balles+'</strong> balle'+(balles>1?'s':'')+' <span style="color:var(--muted);font-size:11px;font-weight:400">('+fmtN(reel)+' sach ÷ 50)</span>';}
-    else soloLive.style.display='none';
+    soloLive.style.display='';
+    if(balles>0)soloLive.innerHTML='🏀 <strong>'+balles+'</strong> balle'+(balles>1?'s':'')+' <span style="color:var(--muted);font-size:11px;font-weight:400">('+fmtN(reel)+' sach ÷ 50)</span>';
+    else soloLive.innerHTML='🏀 0 balle (pas encore 50 sachets)';
+    if(typeEmp==='Femme'){soloLive.innerHTML+=' <span style="color:var(--muted);font-size:10px">| <span style="color:'+(resteSach>0?'var(--amber)':'var(--green)')+'">'+resteSach+'</span>/50 vers prochaine balle</span>';}
   }
   document.getElementById('p-balles-preview').textContent=typeEmp==='Femme'?fmtN(balles)+' balles ('+fmtN(fem)+' ÷ 50)':fmtN(hom)+' balles';
   document.getElementById('p-paie-calc').textContent=fmt(paie);
@@ -611,9 +614,12 @@ function calcMultiProdPaie() {
   const sachets=parseFloat(document.getElementById('p-multi-sachets').value)||0;
   const multiLive=document.getElementById('p-multi-balles-live');
   const balles=sachets>0?Math.floor(sachets/50):0;
+  const resteSach=sachets%50;
   if(multiLive){
-    if(balles>0){multiLive.style.display='';multiLive.innerHTML='🏀 <strong>'+balles+'</strong> balle'+(balles>1?'s':'')+' <span style="color:var(--muted);font-size:11px;font-weight:400">('+fmtN(sachets)+' sach ÷ 50)</span>';}
-    else multiLive.style.display='none';
+    multiLive.style.display='';
+    if(balles>0)multiLive.innerHTML='🏀 <strong>'+balles+'</strong> balle'+(balles>1?'s':'')+' <span style="color:var(--muted);font-size:11px;font-weight:400">('+fmtN(sachets)+' sach ÷ 50)</span>';
+    else multiLive.innerHTML='🏀 0 balle (pas encore 50 sachets)';
+    multiLive.innerHTML+=' <span style="color:var(--muted);font-size:10px">| <span style="color:'+(resteSach>0?'var(--amber)':'var(--green)')+'">'+resteSach+'</span>/50 vers prochaine balle</span>';
   }
   document.getElementById('p-multi-sachets-grp').style.display='';
   let totalPaie;
