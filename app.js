@@ -5,7 +5,7 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:4, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:7, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
@@ -109,6 +109,18 @@ function migrateSchema() {
       return true;
     });
     D._schemaVer = 6;
+  }
+  if(cur<7){
+    // Créer stockS pour chaque commande existante (balles déduites)
+    const stockSDesc = new Set(D.stockS.filter(s=>s.categorie==='Balles 🏀').map(s=>(s.desc||'').toLowerCase()));
+    for(const cmd of D.commandes){
+      const b=cmdStockBalles(cmd);
+      if(b>0 && !stockSDesc.has(('Commande '+cmd.client).toLowerCase())){
+        D.stockS.push({id:nextId++,date:cmd.date,categorie:'Balles 🏀',qte:b,unite:'pièce',desc:'Commande '+cmd.client+' — '+cmd.qte+' '+(cmd.unite||'Balle'),createdBy:cmd.createdBy||'admin'});
+        stockSDesc.add(('Commande '+cmd.client).toLowerCase());
+      }
+    }
+    D._schemaVer = 7;
   }
 }
 
@@ -380,6 +392,8 @@ function execDel(type,id) {
   if(type==='commandes'){
     const cl=D.clients.find(x=>x.name===item.client);
     if(cl)cl.detteCur=Math.max(0,(cl.detteCur||0)-item.reste);
+    const b=cmdStockBalles(item);
+    if(b>0)D.stockE.push({id:nextId++,date:today(),categorie:'Balles 🏀',qte:b,unite:'pièce',cout:0,desc:'Annulation suppression commande '+item.client,createdBy:me()});
   }
   if(type==='productions'&&item.type==='Femme'){
     // Production annulée: on ne rend pas les balles au stock car le calcul stockBalles
@@ -446,7 +460,7 @@ function saveCommande(id) {
   if(rawClient && !cl && !nc && !confirm('⚠️ "'+rawClient+'" ne correspond à aucun client. Continuer ?')) return;
   if(id) {
     const c=D.commandes.find(x=>x.id===id); if(!c)return;
-    const oldReste=c.reste, oldClient=c.client;
+    const oldReste=c.reste, oldClient=c.client, oldBalles=cmdStockBalles(c);
     const diff=paye-c.paye; c.client=client;c.date=date;c.produit=prod;c.qte=qte;c.unite=unite;c.prixTotal=pt;c.paye=paye;c.reste=pt-paye;c.statut=stat;
     const oldCl=findClient(oldClient);
     if(oldCl)oldCl.detteCur=Math.max(0,(oldCl.detteCur||0)-oldReste);
@@ -454,12 +468,15 @@ function saveCommande(id) {
     if(!curCl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});curCl=D.clients[D.clients.length-1];}
     if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
     if(diff!==0) D.montants.push({id:nextId++,date,desc:diff>0?'Acompte commande - '+client:'Correction acompte - '+client,type:'Vente',client,montant:diff,createdBy:me()});
+    if(oldBalles>0)D.stockE.push({id:nextId++,date,categorie:'Balles 🏀',qte:oldBalles,unite:'pièce',cout:0,desc:'Annulation modif commande '+oldClient,createdBy:me()});
+    if(ballesEq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:ballesEq,unite:'pièce',desc:'Commande modifiée '+client+' — '+qte+' '+unite,createdBy:me()});
   } else {
     D.commandes.push({id:nextId++,client,date,produit:prod,qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:stat,createdBy:me()});
     if(paye>0) D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
     let cl=findClient(client);
     if(!cl&&nc&&!sel){D.clients.push({id:nextId++,name:nc,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});cl=D.clients[D.clients.length-1];}
     if(cl)cl.detteCur=(cl.detteCur||0)+(pt-paye);
+    if(ballesEq>0)D.stockS.push({id:nextId++,date,categorie:'Balles 🏀',qte:ballesEq,unite:'pièce',desc:'Commande '+client+' — '+qte+' '+unite,createdBy:me()});
   }
   closeM();save();render();
 }
@@ -1105,7 +1122,9 @@ function dashHTML() {
   const totalBalles=Math.floor(totalSachets/50);
   const cmdPeriod=D.commandes.filter(c=>inRange(c.date));
   const cmdPeriodBalles=calcBallesCommandes(cmdPeriod);
-  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + Math.floor(D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0)/50) - calcBallesCommandes(D.commandes);
+  const stockEntrees=D.stockE.filter(e=>e.categorie==='Balles 🏀').reduce((s,e)=>s+e.qte,0);
+  const stockSorties=D.stockS.filter(s=>s.categorie==='Balles 🏀').reduce((s,s2)=>s+s2.qte,0);
+  const stockBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0) + stockEntrees - stockSorties;
   const prods=[...prodsAll].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5);
   const byCat={}; depenses.forEach(d=>{byCat[d.categorie]=(byCat[d.categorie]||0)+d.montant;});
   const byType={}; montants.forEach(m=>{byType[m.type]=(byType[m.type]||0)+m.montant;});
@@ -1403,27 +1422,25 @@ function depensesHTML() {
 
 function stockHTML() {
   const cur={}; STK.forEach(c=>cur[c]=0);
-  D.stockE.forEach(e=>{if(e.categorie!=='Balles 🏀')cur[e.categorie]=(cur[e.categorie]||0)+e.qte;});
-  D.stockS.forEach(s=>{if(s.categorie!=='Balles 🏀')cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
+  D.stockE.forEach(e=>{cur[e.categorie]=(cur[e.categorie]||0)+e.qte;});
+  D.stockS.forEach(s=>{cur[s.categorie]=(cur[s.categorie]||0)-s.qte;});
   D.stockInit.forEach(si=>{
     cur.Farine=(cur.Farine||0)+(si.farine||0);
     cur['Sachets rouleaux']=(cur['Sachets rouleaux']||0)+(si.sachetsR||0);
     cur['Sachets grand']=(cur['Sachets grand']||0)+(si.sachetsG||0);
     cur['Sachets petit']=(cur['Sachets petit']||0)+(si.sachetsP||0);
+    cur['Balles 🏀']=(cur['Balles 🏀']||0)+(si.balles||0);
   });
-  // Balles: stock initial + productions - commandes (stockE/stockS ignorés)
-  const initBalles=D.stockInit.reduce((s,si)=>s+(si.balles||0),0);
   const prodBalles=Math.floor(D.productions.filter(p=>p.type==='Femme').reduce((s,p)=>s+p.reel,0)/50);
   const cmdBalles=calcBallesCommandes(D.commandes);
   const sachetsRestants=calcSachetsRestants();
   const sachetsEnStock=calcSachetsEnStock();
-  cur['Balles 🏀']=initBalles+prodBalles-cmdBalles;
   const initItems=[...D.stockInit].sort((a,b)=>b.date.localeCompare(a.date));
   return `<h1>📦 Stock</h1><p class="desc">Gestion des entrées, sorties et stock initial</p>
   <div class="toolbar"><button class="btn btn-p" onclick="stockForm('E')">+ Entrée</button><button class="btn btn-o" onclick="stockForm('S')">- Sortie</button><button class="btn btn-g" onclick="stockInitForm()">📋 Stock initial</button></div>
   <div class="grid">${STK.map(c=>`<div class="card" style="text-align:center;padding:.7rem">
     <div class="big" style="font-size:20px;color:${(cur[c]||0)>=0?'var(--green)':'var(--red)'}">${cur[c]||0}</div>
-    <div class="lbl" style="font-size:10px">${c}${c==='Balles 🏀'?` <span style="color:var(--amber);font-size:9px">(prod: ${sachetsEnStock} sach. rest. | ventes: ${sachetsRestants} sach. cumul.)</span>`:''}</div></div>`).join('')}</div>
+    <div class="lbl" style="font-size:10px">${c}${c==='Balles 🏀'?` <span style="color:var(--amber);font-size:9px">(prod: ${prodBalles} | cmd: ${cmdBalles} | sach : ${sachetsEnStock} rest.)</span>`:''}</div></div>`).join('')}</div>
   ${initItems.length?`<div class="card mb-12"><h2>📋 Stock initial</h2>
   <div class="table-wrap"><table><thead><tr><th>Date</th><th>Farine</th><th>Sach. rouleaux</th><th>Sach. grand</th><th>Sach. petit</th><th>Balles 🏀</th><th></th></tr></thead>
   <tbody>${initItems.map(si=>`<tr><td>${esc(si.date)}</td><td>${si.farine||0}</td><td>${si.sachetsR||0}</td><td>${si.sachetsG||0}</td><td>${si.sachetsP||0}</td><td>${si.balles||0}</td>
@@ -1548,7 +1565,7 @@ function exporterHTML() {
 function resetApp() {
   if(!confirm('⚠️ SUPPRIMER TOUTES LES DONNÉES ? Cette action est irréversible.'))return;
   if(!confirm('⚠️⚠️ Confirmer : plus aucun client, commande, production ni paie ne sera conservé.'))return;
-  D = { _schemaVer:6, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+  D = { _schemaVer:7, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
   nextId = 1; save(); render();
   alert('✅ Application réinitialisée. Toutes les données ont été effacées.');
 }
