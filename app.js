@@ -5,7 +5,7 @@ const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
 const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
 let SB = null;
 try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
-let D = { _schemaVer:9, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+let D = { _schemaVer:10, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
 let filterRange = { start: '', end: '' };
@@ -149,6 +149,14 @@ function migrateSchema() {
     }
     D._schemaVer=9;
   }
+  if(cur<10){
+    for(const e of D.employes){
+      if(e.paieType===undefined) e.paieType='production';
+      if(e.salaireFixe===undefined) e.salaireFixe=0;
+    }
+    D._schemaVer=10;
+  }
+  D.clients=D.clients||[]; D.commandes=D.commandes||[]; D.productions=D.productions||[]; D.montants=D.montants||[]; D.depenses=D.depenses||[]; D.stockE=D.stockE||[]; D.stockS=D.stockS||[]; D.employes=D.employes||[]; D.retraits=D.retraits||[]; D.trash=D.trash||[];
 }
 
 function findClient(name) {
@@ -570,7 +578,7 @@ function setProdMode(m) {
 }
 function renderEmpCheckboxes() {
   const c=document.getElementById('p-employe-checkboxes'); if(!c)return;
-  c.innerHTML=D.employes.filter(x=>x.type==='Femme').map(e=>`
+  c.innerHTML=D.employes.filter(x=>x.type==='Femme'&&x.paieType!=='fixe').map(e=>`
     <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;padding:3px 0">
       <input type="checkbox" value="${esc(e.name)}" onchange="onMultiEmpChange()">${esc(e.name)}
     </label>`).join('')||'<div style="color:var(--muted);font-size:12px">Aucune employée femme</div>';
@@ -697,7 +705,7 @@ function calcMultiProdPaie() {
 
 function prodForm(p) {
   const e=!!p; _prodMode='solo';
-  const empOpts=D.employes.map(x=>`<option value="${x.id}"${e&&p.employes&&p.employes[0]===x.name?' selected':''}>${esc(x.name)}</option>`).join('');
+  const empOpts=D.employes.filter(x=>x.paieType!=='fixe').map(x=>`<option value="${x.id}"${e&&p.employes&&p.employes[0]===x.name?' selected':''}>${esc(x.name)}</option>`).join('');
   const checked=e?(p.employes||[]):[];
   openM(`
     <h3>${e?'✏️ Modifier':'🏭 Nouvelle'} production</h3>
@@ -982,6 +990,7 @@ function saveStockInit(id) {
 // ─── EMPLOYÉ ───
 function empForm(e) {
   const edit=!!e;
+  const paieFix=edit?e.paieType==='fixe':false;
   openM(`
     <h3>${edit?'✏️ Modifier':'👷 Nouvel'} employé</h3>
     <label>Nom</label><input id="eName" value="${edit?esc(e.name):''}" />
@@ -989,12 +998,82 @@ function empForm(e) {
     <div><label>Type</label><select id="eType"><option value="Femme"${edit&&e.type==='Femme'?' selected':''}>👩 Femme</option>
     <option value="Homme"${edit&&e.type==='Homme'?' selected':''}>👨 Homme</option>
     <option value="Autre"${edit&&e.type==='Autre'?' selected':''}>👤 Autre</option></select></div></div>
+    <div class="m-row"><div><label>Mode de paie</label><select id="ePaieType" onchange="togglePaieType()">
+      <option value="production"${edit&&e.paieType==='production'?' selected':''}>Production</option>
+      <option value="fixe"${edit&&e.paieType==='fixe'?' selected':''}>💰 Fixe</option>
+    </select></div>
+    <div id="eSalaireGrp" style="display:${paieFix?'':'none'}">
+      <label>Salaire mensuel (FCFA)</label><input type="number" id="eSalaireFixe" value="${edit?e.salaireFixe||'':''}" />
+    </div></div>
     <div class="m-row"><div><label>Téléphone</label><input id="ePhone" value="${edit?esc(e.phone||''):''}" /></div>
     <div><label>Date d'embauche</label><input type="date" id="eDate" value="${edit?e.dateEmbauche:today()}" /></div></div>
     <label>Notes</label><textarea id="eNotes">${edit?esc(e.notes||''):''}</textarea>
     <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
     <button class="btn btn-p" onclick="saveEmp(${edit?e.id:'null'})">${edit?'Modifier':'Enregistrer'}</button></div>
   `);
+}
+function togglePaieType() {
+  const grp=document.getElementById('eSalaireGrp');
+  if(grp)grp.style.display=val('ePaieType')==='fixe'?'':'none';
+}
+function saveEmp(id) {
+  const n=val('eName').trim(); if(!n)return alert('Nom requis');
+  if(!id&&D.employes.find(e=>e.name===n))return alert('Ce nom existe deja');
+  const paieType=val('ePaieType')||'production';
+  const sf=paieType==='fixe'?num('eSalaireFixe')||0:0;
+  if(id){const e=D.employes.find(x=>x.id===id);if(e){e.name=n;e.role=val('eRole');e.type=val('eType');e.paieType=paieType;e.salaireFixe=sf;e.phone=val('ePhone');e.dateEmbauche=val('eDate');e.notes=val('eNotes');}}
+  else D.employes.push({id:nextId++,name:n,role:val('eRole'),type:val('eType'),paieType, salaireFixe:sf,phone:val('ePhone'),dateEmbauche:val('eDate'),notes:val('eNotes'),createdBy:me()});
+  closeM();save();render();
+}
+function retraitForm(id) {
+  const e=D.employes.find(x=>x.id===id); if(!e)return;
+  const paie=calcEmpPaie(e);
+  const retire=D.retraits.filter(r=>r.employe===e.name).reduce((s,r)=>s+r.montant,0);
+  const solde=paie-retire;
+  openM(`
+    <h3>💸 Retrait — ${esc(e.name)}</h3>
+    <div class="calc"><div class="r"><span>💰 Paie gagnée</span><span class="v">${fmt(paie)}</span></div>
+    <div class="r"><span>↩️ Déjà retiré</span><span class="v">${fmt(retire)}</span></div>
+    <div class="r" style="font-size:16px;color:${solde>=0?'var(--accent)':'var(--red)'}"><span>🏦 Solde</span><span class="v">${fmt(solde)}</span></div></div>
+    <div class="m-row"><div><label>Date</label><input type="date" id="rDate" value="${today()}" /></div>
+    <div><label>Montant</label><input type="number" id="rMt" value="" oninput="retraitWarn(${solde})" /></div></div>
+    <div id="rWarn" style="display:none;background:var(--surface);border:1px solid var(--red);border-radius:6px;padding:8px;font-size:12px;margin-bottom:8px"></div>
+    <label>Notes</label><textarea id="rNotes"></textarea>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveRetrait(${id},${solde})">Retirer</button></div>
+  `);
+  setTimeout(()=>{const el=document.getElementById('rMt');if(el)el.value=solde>0?solde:'';},50);
+}
+function retraitWarn(solde) {
+  const mt=num('rMt'),w=document.getElementById('rWarn');
+  if(!w)return;
+  if(mt>Math.max(0,solde)){
+    const d=mt-Math.max(0,solde);
+    w.style.display='block';
+    w.innerHTML=`⚠️ Dépassement de <b>${fmt(d)}</b> sur le solde disponible.${solde<0?' (Compte déjà en déficit de '+fmt(-solde)+')':''}`;
+  } else w.style.display='none';
+}
+function saveRetrait(id,maxS) {
+  const e=D.employes.find(x=>x.id===id); if(!e)return alert('Erreur');
+  const mt=num('rMt'); if(mt<=0||mt>maxS)return alert('Montant invalide');
+  D.retraits.push({id:nextId++,date:val('rDate'),employe:e.name,montant:mt,notes:val('rNotes'),createdBy:me()});
+  closeM();save();render();
+}
+function calcEmpPaie(e) {
+  if(e.paieType==='fixe') return D.depenses.filter(d=>d.employe===e.name&&d.categorie==='Salaire mensuel').reduce((s,d)=>s+d.montant,0);
+  return D.productions.reduce((s,p)=>prodEmps(p).includes(e.name)?s+(p.type==='Femme'?Math.round(p.paie/prodEmps(p).length):p.paie):s,0);
+}
+function payerSalaire(id) {
+  const e=D.employes.find(x=>x.id===id); if(!e||e.paieType!=='fixe')return;
+  const mt=e.salaireFixe; if(!mt||mt<=0)return alert('Salaire mensuel non défini pour '+e.name);
+  const mois=today().slice(0,7);
+  const deja=D.depenses.some(d=>d.employe===e.name&&d.date.slice(0,7)===mois&&d.categorie==='Salaire mensuel');
+  if(deja&&!confirm('⚠️ '+e.name+' déjà payé en '+mois+'. Payer quand même ?')) return;
+  const avances=D.retraits.filter(r=>r.employe===e.name&&(!r.notes||!r.notes.startsWith('Salaire mensuel'))).reduce((s,r)=>s+r.montant,0);
+  const aPayer=Math.max(0,mt-avances);
+  D.depenses.push({id:nextId++,date:today(),categorie:'Salaire mensuel',montant:mt,detail:e.role?'Salaire '+e.role:'Salaire mensuel',employe:e.name,createdBy:me()});
+  D.retraits.push({id:nextId++,date:today(),employe:e.name,montant:aPayer,notes:'Salaire mensuel - '+mois,createdBy:me()});
+  save();render();
 }
 function saveEmp(id) {
   const n=val('eName').trim(); if(!n)return alert('Nom requis');
@@ -1548,7 +1627,7 @@ function analysesHTML() {
 
 function employesHTML() {
   const empData = D.employes.map(e=>{
-    const paie=D.productions.reduce((s,p)=>prodEmps(p).includes(e.name)?s+(p.type==='Femme'?Math.round(p.paie/prodEmps(p).length):p.paie):s,0);
+    const paie=calcEmpPaie(e);
     const retire=D.retraits.filter(r=>r.employe===e.name).reduce((s,r)=>s+r.montant,0);
     return {...e,paie,retire,solde:paie-retire};
   });
@@ -1567,11 +1646,11 @@ function employesHTML() {
   <div class="table-wrap mb-12"><table><thead><tr><th>Nom</th><th>Type</th><th>💰 Paie gagnée</th><th>↩️ Retiré</th><th>🏦 Solde</th><th>Actions</th></tr></thead>
   <tbody>${empData.length?empData.map(e=>{const pct=e.paie>0?Math.round(Math.min(e.retire/e.paie,1)*100):0;
   return `<tr><td><strong>${esc(e.name)}</strong>${e.role?`<div style="font-size:10px;color:var(--text3)">${esc(e.role)}</div>`:''}</td>
-  <td><span class="badge ${e.type==='Femme'?'bg-k':e.type==='Homme'?'bg-b':'bg-n'}">${e.type}</span></td>
+  <td><span class="badge ${e.type==='Femme'?'bg-k':e.type==='Homme'?'bg-b':'bg-n'}">${e.type}${e.paieType==='fixe'?' 💰 Fixe':''}</span></td>
   <td style="font-weight:600;color:var(--accent)">${fmt(e.paie)}</td><td>${fmt(e.retire)}</td>
   <td>${(()=>{if(e.solde>0)return `<div style="font-weight:700;color:var(--green);font-size:14px">${fmt(e.solde)}</div><div style="background:var(--border);border-radius:99px;height:4px;width:70px;margin-top:3px"><div style="background:var(--green);height:4px;border-radius:99px;width:${pct}%"></div></div><div style="font-size:9px;color:var(--text3)">${pct}% retiré</div>`;if(e.solde===0)return `<span style="color:var(--text3);font-weight:600">0 FCFA</span><div style="font-size:9px;color:var(--text3)">Tout retiré</div>`;return `<div style="background:var(--surface);border:1px solid var(--red);border-radius:6px;padding:4px 6px;display:inline-block"><span style="font-weight:700;color:var(--red);font-size:13px">-${fmt(-e.solde)}</span><div style="font-size:9px;color:var(--red);font-weight:600">⚠ Dépassement</div></div>`;})()}</td>
   <td class="gap-4"><button class="btn btn-sm btn-gh" onclick="empForm(D.employes.find(x=>x.id===${e.id}))"><i class="ti ti-pencil"></i></button>
-  <button class="btn btn-sm btn-g" onclick="retraitForm(${e.id})"><i class="ti ti-cash"></i></button>
+  ${e.paieType==='fixe'?`<button class="btn btn-sm btn-p" onclick="payerSalaire(${e.id})" title="Payer salaire mensuel">💰</button>`:`<button class="btn btn-sm btn-g" onclick="retraitForm(${e.id})"><i class="ti ti-cash"></i></button>`}
   <button class="btn btn-sm btn-r" onclick="confirmDel('Supprimer cet employé?','employes',D.employes.find(x=>x.id===${e.id}))"><i class="ti ti-trash"></i></button></td></tr>`;}).join(''):'<tr><td colspan="6" class="empty">Aucun employé</td></tr>'}</tbody></table></div>
   <div class="card"><h2>📋 Retraits caisse</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Employé</th><th>Montant</th><th>Notes</th><th></th></tr></thead>
   <tbody>${retraits.length?retraits.map(r=>`<tr><td>${esc(r.date)}</td><td>${esc(r.employe)}</td><td style="font-weight:600">${fmt(r.montant)}</td><td>${esc(r.notes||'')}</td>
@@ -1606,7 +1685,7 @@ function exporterHTML() {
 function resetApp() {
   if(!confirm('⚠️ SUPPRIMER TOUTES LES DONNÉES ? Cette action est irréversible.'))return;
   if(!confirm('⚠️⚠️ Confirmer : plus aucun client, commande, production ni paie ne sera conservé.'))return;
-  D = { _schemaVer:9, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
+  D = { _schemaVer:10, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
   nextId = 1; save(); render();
   alert('✅ Application réinitialisée. Toutes les données ont été effacées.');
 }
