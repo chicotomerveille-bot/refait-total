@@ -45,7 +45,7 @@ tr:hover td{background:var(--tr-hover)}
 .empty{padding:1.5rem;text-align:center;color:var(--text3);font-size:12px}
 .m-overlay{display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.3);backdrop-filter:blur(3px);align-items:center;justify-content:center;padding:1rem}
 .m-overlay.o{display:flex}
-.m-body{background:var(--surface);border-radius:14px;padding:1.25rem;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.08);transition:background .2s}
+.m-body{background:var(--surface);border-radius:14px;padding:1.25rem;width:100%;max-width:580px;max-height:90vh;overflow-y:auto;box-shadow:0 10px 30px rgba(0,0,0,.08);transition:background .2s}
 .m-body h3{font-size:14px;font-weight:700;margin-bottom:.85rem;display:flex;align-items:center;gap:7px}
 .m-body label{font-size:10px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;display:block;margin-bottom:2px;margin-top:1px}
 .m-body input,.m-body select,.m-body textarea{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:12.5px;outline:none;margin-bottom:8px;font-family:inherit;background:var(--bg);color:var(--text);transition:border-color .15s,background .2s,color .2s}
