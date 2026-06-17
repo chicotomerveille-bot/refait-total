@@ -1380,7 +1380,7 @@ function commandesHTML() {
     <div class="card tc"><div class="big" style="color:${sachetsEnAttente>0?'var(--amber)':'var(--green)'}">${sachetsEnAttente}</div><div class="lbl">🧮 Sachets non convertis</div></div>
     <div class="card tc"><div class="big">${fmtN(totalSachetsEq)}</div><div class="lbl">🧮 Total sachets (équiv.)</div></div>
   </div>
-  <div class="toolbar"><button class="btn btn-p" onclick="commandeForm()">+ Nouvelle</button></div>
+  <div class="toolbar"><button class="btn btn-p" onclick="commandeForm()">+ Nouvelle</button><button class="btn btn-g" onclick="saisieRapide()">📋 Saisie rapide</button></div>
   <div class="table-wrap">
   <table>
     <thead><tr>
@@ -1415,6 +1415,79 @@ function commandesHTML() {
     }</tbody>
   </table>
   </div>`;
+}
+function saisieRapide() {
+  const clOpts=D.clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  openM(`
+    <h3>📋 Saisie rapide de commandes</h3>
+    <label>Date</label><input type="date" id="srDate" value="${today()}" />
+    <div id="srRows"><div class="sr-row" style="display:grid;grid-template-columns:2fr 1fr 1fr 60px 40px;gap:6px;align-items:end;margin-bottom:6px">
+      <div><label>Client</label><select class="sr-cli" onchange="srToggleNew(this)">${clOpts}<option value="__new__">➕ Nouveau</option></select><input class="sr-new" placeholder="Nouveau client" style="display:none;margin-top:4px" /></div>
+      <div><label>Qté</label><input type="number" class="sr-qte" value="1" min="1" /></div>
+      <div><label>Unité</label><select class="sr-unite"><option value="Balle">Balle</option><option value="Sachet">Sachet</option></select></div>
+      <div><label>Acompte</label><input type="number" class="sr-acompte" value="0" /></div>
+      <div style="display:flex;align-items:end"><button class="btn btn-sm btn-r" onclick="srDelRow(this)" style="padding:4px 8px">✕</button></div>
+    </div></div>
+    <button class="btn btn-sm btn-gh" onclick="srAddRow()" style="margin-bottom:10px">➕ Ajouter une ligne</button>
+    <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
+    <button class="btn btn-p" onclick="saveSaisieRapide()">✅ Valider tout</button></div>
+  `);
+}
+function srToggleNew(sel) {
+  const row=sel.closest('.sr-row');
+  if(!row)return;
+  const ni=row.querySelector('.sr-new');
+  ni.style.display=sel.value==='__new__'?'':'none';
+  if(sel.value!=='__new__')ni.value='';
+}
+function srAddRow() {
+  const t=document.getElementById('srRows');
+  if(!t)return;
+  const clOpts=D.clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+  const d=document.createElement('div');
+  d.className='sr-row';
+  d.style.cssText='display:grid;grid-template-columns:2fr 1fr 1fr 60px 40px;gap:6px;align-items:end;margin-bottom:6px';
+  d.innerHTML=`
+    <div><select class="sr-cli" onchange="srToggleNew(this)">${clOpts}<option value="__new__">➕ Nouveau</option></select><input class="sr-new" placeholder="Nouveau client" style="display:none;margin-top:4px" /></div>
+    <div><input type="number" class="sr-qte" value="1" min="1" /></div>
+    <div><select class="sr-unite"><option value="Balle">Balle</option><option value="Sachet">Sachet</option></select></div>
+    <div><input type="number" class="sr-acompte" value="0" /></div>
+    <div style="display:flex;align-items:end"><button class="btn btn-sm btn-r" onclick="srDelRow(this)" style="padding:4px 8px">✕</button></div>`;
+  t.appendChild(d);
+}
+function srDelRow(btn) {
+  const row=btn.closest('.sr-row');
+  if(row)row.remove();
+}
+function saveSaisieRapide() {
+  const rows=document.querySelectorAll('#srRows .sr-row');
+  if(!rows.length)return alert('Ajoutez au moins une commande');
+  const date=val('srDate');
+  if(!date)return alert('Date requise');
+  let count=0;
+  for(const row of rows){
+    const sel=row.querySelector('.sr-cli');
+    const ni=row.querySelector('.sr-new');
+    const client=sel.value==='__new__'?ni.value.trim():sel.value;
+    if(!client)continue;
+    const qte=parseFloat(row.querySelector('.sr-qte').value)||0;
+    if(qte<=0)continue;
+    const unite=row.querySelector('.sr-unite').value;
+    const pu=unite==='Sachet'?500:25000;
+    const pt=qte*pu;
+    const paye=parseFloat(row.querySelector('.sr-acompte').value)||0;
+    const cl=findClient(client);
+    if(!cl&&sel.value==='__new__'){
+      D.clients.push({id:nextId++,name:client,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});
+    }
+    const curCl=findClient(client);
+    D.commandes.push({id:nextId++,client,date,produit:'Chips',qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:'En attente',createdBy:me()});
+    if(paye>0)D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
+    if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
+    count++;
+  }
+  if(!count)return alert('Aucune commande valide');
+  closeM();save();render();
 }
 
 // Week calculation
