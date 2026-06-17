@@ -1419,19 +1419,28 @@ function commandesHTML() {
 function saisieRapide() {
   const clOpts=D.clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   openM(`
-    <h3>📋 Saisie rapide de commandes</h3>
+    <h3>📋 Saisie rapide</h3>
     <label>Date</label><input type="date" id="srDate" value="${today()}" />
-    <div id="srRows"><div class="sr-row" style="display:grid;grid-template-columns:2fr 1fr 1fr 60px 40px;gap:6px;align-items:end;margin-bottom:6px">
+    <div id="srRows"><div class="sr-row" style="display:grid;grid-template-columns:65px 2fr 1fr 70px 40px;gap:6px;align-items:end;margin-bottom:6px">
+      <div><label>Type</label><select class="sr-type" onchange="srToggleType(this)"><option value="commande">📦 Cde</option><option value="dette">💰 Dette</option></select></div>
       <div><label>Client</label><select class="sr-cli" onchange="srToggleNew(this)">${clOpts}<option value="__new__">➕ Nouveau</option></select><input class="sr-new" placeholder="Nouveau client" style="display:none;margin-top:4px" /></div>
-      <div><label>Qté</label><input type="number" class="sr-qte" value="1" min="1" /></div>
-      <div><label>Unité</label><select class="sr-unite"><option value="Balle">Balle</option><option value="Sachet">Sachet</option></select></div>
-      <div><label>Acompte</label><input type="number" class="sr-acompte" value="0" /></div>
+      <div class="sr-cmd-fields"><label>Qté</label><input type="number" class="sr-qte" value="1" min="1" />
+        <div style="display:flex;gap:4px;margin-top:4px"><select class="sr-unite" style="flex:1"><option value="Balle">Balle</option><option value="Sachet">Sachet</option></select>
+        <input type="number" class="sr-acompte" placeholder="Acompte" value="0" style="width:65px" /></div></div>
+      <div class="sr-dette-fields" style="display:none"><label>Montant</label><input type="number" class="sr-montant" value="0" /></div>
       <div style="display:flex;align-items:end"><button class="btn btn-sm btn-r" onclick="srDelRow(this)" style="padding:4px 8px">✕</button></div>
     </div></div>
     <button class="btn btn-sm btn-gh" onclick="srAddRow()" style="margin-bottom:10px">➕ Ajouter une ligne</button>
     <div class="m-actions"><button class="btn btn-o" onclick="closeM()">Annuler</button>
     <button class="btn btn-p" onclick="saveSaisieRapide()">✅ Valider tout</button></div>
   `);
+}
+function srToggleType(sel) {
+  const row=sel.closest('.sr-row');
+  if(!row)return;
+  const isDette=sel.value==='dette';
+  row.querySelector('.sr-cmd-fields').style.display=isDette?'none':'';
+  row.querySelector('.sr-dette-fields').style.display=isDette?'':'none';
 }
 function srToggleNew(sel) {
   const row=sel.closest('.sr-row');
@@ -1446,12 +1455,14 @@ function srAddRow() {
   const clOpts=D.clients.map(c=>`<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
   const d=document.createElement('div');
   d.className='sr-row';
-  d.style.cssText='display:grid;grid-template-columns:2fr 1fr 1fr 60px 40px;gap:6px;align-items:end;margin-bottom:6px';
+  d.style.cssText='display:grid;grid-template-columns:65px 2fr 1fr 70px 40px;gap:6px;align-items:end;margin-bottom:6px';
   d.innerHTML=`
+    <div><select class="sr-type" onchange="srToggleType(this)"><option value="commande">📦 Cde</option><option value="dette">💰 Dette</option></select></div>
     <div><select class="sr-cli" onchange="srToggleNew(this)">${clOpts}<option value="__new__">➕ Nouveau</option></select><input class="sr-new" placeholder="Nouveau client" style="display:none;margin-top:4px" /></div>
-    <div><input type="number" class="sr-qte" value="1" min="1" /></div>
-    <div><select class="sr-unite"><option value="Balle">Balle</option><option value="Sachet">Sachet</option></select></div>
-    <div><input type="number" class="sr-acompte" value="0" /></div>
+    <div class="sr-cmd-fields"><input type="number" class="sr-qte" value="1" min="1" style="margin-bottom:4px" />
+      <div style="display:flex;gap:4px"><select class="sr-unite" style="flex:1"><option value="Balle">Balle</option><option value="Sachet">Sachet</option></select>
+      <input type="number" class="sr-acompte" placeholder="Acompte" value="0" style="width:65px" /></div></div>
+    <div class="sr-dette-fields" style="display:none"><input type="number" class="sr-montant" value="0" /></div>
     <div style="display:flex;align-items:end"><button class="btn btn-sm btn-r" onclick="srDelRow(this)" style="padding:4px 8px">✕</button></div>`;
   t.appendChild(d);
 }
@@ -1461,32 +1472,47 @@ function srDelRow(btn) {
 }
 function saveSaisieRapide() {
   const rows=document.querySelectorAll('#srRows .sr-row');
-  if(!rows.length)return alert('Ajoutez au moins une commande');
+  if(!rows.length)return alert('Ajoutez au moins une ligne');
   const date=val('srDate');
   if(!date)return alert('Date requise');
   let count=0;
   for(const row of rows){
+    const isDette=row.querySelector('.sr-type').value==='dette';
     const sel=row.querySelector('.sr-cli');
     const ni=row.querySelector('.sr-new');
     const client=sel.value==='__new__'?ni.value.trim():sel.value;
     if(!client)continue;
-    const qte=parseFloat(row.querySelector('.sr-qte').value)||0;
-    if(qte<=0)continue;
-    const unite=row.querySelector('.sr-unite').value;
-    const pu=unite==='Sachet'?500:25000;
-    const pt=qte*pu;
-    const paye=parseFloat(row.querySelector('.sr-acompte').value)||0;
-    const cl=findClient(client);
-    if(!cl&&sel.value==='__new__'){
+    if(!findClient(client)&&sel.value==='__new__'){
       D.clients.push({id:nextId++,name:client,phone:'',addr:'',detteInit:0,detteCur:0,createdBy:me()});
     }
     const curCl=findClient(client);
-    D.commandes.push({id:nextId++,client,date,produit:'Chips',qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:'En attente',createdBy:me()});
-    if(paye>0)D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
-    if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
+    if(isDette){
+      const mt=parseFloat(row.querySelector('.sr-montant').value)||0;
+      if(mt<=0)continue;
+      curCl&&(curCl.detteCur=Math.max(0,(curCl.detteCur||0)-mt));
+      D.montants.push({id:nextId++,date,desc:'Paiement dette - '+client,type:'Dette reçue',client,montant:mt,createdBy:me()});
+      const cmds=D.commandes.filter(x=>x.client===client&&x.reste>0).sort((a,b)=>a.date.localeCompare(b.date));
+      let left=mt;
+      for(const cmd of cmds){
+        if(left<=0)break;
+        const pay=Math.min(left,cmd.reste);
+        cmd.paye+=pay;cmd.reste=cmd.prixTotal-cmd.paye;left-=pay;
+        if(cmd.reste<=0)cmd.statut='Livrée';
+      }
+    } else {
+      const qte=parseFloat(row.querySelector('.sr-qte').value)||0;
+      if(qte<=0)continue;
+      const unite=row.querySelector('.sr-unite').value;
+      const pu=unite==='Sachet'?500:25000;
+      const pt=qte*pu;
+      const paye=parseFloat(row.querySelector('.sr-acompte').value)||0;
+      D.commandes.push({id:nextId++,client,date,produit:'Chips',qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:'En attente',createdBy:me()});
+      if(paye>0)D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
+      if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
+    }
     count++;
   }
-  if(!count)return alert('Aucune commande valide');
+  if(!count)return alert('Aucune ligne valide');
   closeM();save();render();
 }
 
