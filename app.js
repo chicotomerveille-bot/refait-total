@@ -1506,7 +1506,7 @@ function saveSaisieRapide() {
       const pu=unite==='Sachet'?500:25000;
       const pt=qte*pu;
       const paye=parseFloat(row.querySelector('.sr-acompte').value)||0;
-      D.commandes.push({id:nextId++,client,date,produit:'Chips',qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:'En attente',createdBy:me()});
+      D.commandes.push({id:nextId++,client,date,produit:'Chips',qte,unite,prixTotal:pt,paye,reste:pt-paye,statut:'Livrée',createdBy:me()});
       if(paye>0)D.montants.push({id:nextId++,date,desc:'Acompte commande - '+client,type:'Vente',client,montant:paye,createdBy:me()});
       if(curCl)curCl.detteCur=(curCl.detteCur||0)+(pt-paye);
     }
