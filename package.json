@@ -1,0 +1,38 @@
+{
+  "name": "chips-gestion-pro",
+  "version": "1.0.0",
+  "description": "Application de gestion professionnelle pour production de chips",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.chips.gestion-pro",
+    "productName": "Chips Gestion Pro",
+    "directories": { "output": "dist" },
+    "win": {
+      "target": ["portable", "nsis"],
+      "icon": "icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "icon.png",
+      "uninstallerIcon": "icon.png"
+    },
+    "files": [
+      "index.html",
+      "style.css",
+      "app.js",
+      "main.js",
+      "package.json"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}
