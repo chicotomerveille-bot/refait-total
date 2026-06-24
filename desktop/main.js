@@ -10,28 +10,24 @@ function createWindow() {
     minWidth: 900,
     minHeight: 600,
     title: 'Chips Gestion Pro',
-    icon: path.join(__dirname, 'icon.png'),
+    autoHideMenuBar: true,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true
-    },
-    autoHideMenuBar: true
+    }
   });
 
-  win.loadFile('index.html');
+  win.loadFile(path.join(__dirname, '..', 'index.html'));
 
   win.on('closed', () => { win = null; });
-
   win.on('page-title-updated', (e) => e.preventDefault());
 }
 
 app.whenReady().then(() => {
   createWindow();
-
   globalShortcut.register('CommandOrControl+R', () => {
     if (win) win.webContents.reload();
   });
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

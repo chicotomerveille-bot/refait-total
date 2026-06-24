@@ -5,7 +5,6 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-builder",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win portable"
   },
@@ -13,22 +12,18 @@
     "appId": "com.chips.gestion-pro",
     "productName": "Chips Gestion Pro",
     "directories": { "output": "dist" },
-    "win": {
-      "target": ["portable", "nsis"],
-      "icon": "icon.png"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "icon.png",
-      "uninstallerIcon": "icon.png"
-    },
     "files": [
-      "index.html",
-      "style.css",
-      "app.js",
       "main.js",
-      "package.json"
+      "../index.html",
+      "../style.css",
+      "../app.js"
+    ],
+    "win": {
+      "target": ["portable"],
+      "icon": null
+    },
+    "extraResources": [
+      { "from": "../", "to": "../", "filter": ["index.html", "style.css", "app.js"] }
     ]
   },
   "devDependencies": {
