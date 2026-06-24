@@ -13,7 +13,7 @@
   "build": {
     "appId": "com.chips.gestion-pro",
     "productName": "Chips Gestion Pro",
-    "directories": { "output": "build" },
+    "directories": { "output": "_out" },
     "files": [
       "main.js",
       "..\\index.html",
@@ -25,7 +25,7 @@
     ],
     "win": {
       "target": ["nsis"],
-      "icon": null,
+      "icon": "../icon.ico",
       "legalTrademarks": "Chips Gestion Pro"
     },
     "nsis": {
@@ -35,9 +35,6 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Chips Gestion Pro",
-      "installerIcon": null,
-      "uninstallerIcon": null,
-      "installerHeaderIcon": null,
       "menuCategory": true,
       "displayLanguageSelector": false
     }

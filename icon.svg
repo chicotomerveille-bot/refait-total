@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="bag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f97316"/>
+      <stop offset="50%" stop-color="#ea580c"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="chipGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity=".15"/>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#bg)" filter="url(#shadow)"/>
+
+  <!-- Bag body -->
+  <path d="M160 140 L352 140 L370 200 Q380 240 380 280 L380 360 Q380 400 360 420 L152 420 Q132 400 132 360 L132 280 Q132 240 142 200 Z"
+        fill="#fff" stroke="#e5e7eb" stroke-width="2"/>
+
+  <!-- Bag seal top (crimped edge) -->
+  <rect x="158" y="130" width="196" height="22" rx="3" fill="#fef2c7"/>
+  <line x1="165" y1="135" x2="165" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="175" y1="135" x2="175" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="185" y1="135" x2="185" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="195" y1="135" x2="195" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="205" y1="135" x2="205" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="215" y1="135" x2="215" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="225" y1="135" x2="225" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="235" y1="135" x2="235" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="245" y1="135" x2="245" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="255" y1="135" x2="255" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="265" y1="135" x2="265" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="275" y1="135" x2="275" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="285" y1="135" x2="285" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="295" y1="135" x2="295" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="305" y1="135" x2="305" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="315" y1="135" x2="315" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="325" y1="135" x2="325" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="335" y1="135" x2="335" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+  <line x1="345" y1="135" x2="345" y2="147" stroke="#fcd34d" stroke-width="1.5"/>
+
+  <!-- Chip silhouette on bag -->
+  <ellipse cx="256" cy="290" rx="50" ry="58" fill="url(#chipGrad)" transform="rotate(-15 256 290)"/>
+  <ellipse cx="256" cy="290" rx="50" ry="58" fill="none" stroke="#d97706" stroke-width="2" transform="rotate(-15 256 290)"/>
+
+  <!-- Chip cracks -->
+  <path d="M230 270 Q240 280 235 295" stroke="#d97706" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M270 265 Q280 275 275 290" stroke="#d97706" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+  <path d="M245 320 Q255 310 260 325" stroke="#d97706" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M285 305 Q290 315 282 325" stroke="#d97706" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <!-- Label on bag -->
+  <rect x="210" y="355" width="92" height="22" rx="4" fill="#ea580c"/>
+  <text x="256" y="370" text-anchor="middle" fill="#fff" font-size="12" font-weight="700" font-family="sans-serif">CHIPS</text>
+
+  <!-- Small decorative dots -->
+  <circle cx="180" cy="230" r="4" fill="#fca5a5" opacity=".6"/>
+  <circle cx="175" cy="260" r="3" fill="#fca5a5" opacity=".4"/>
+  <circle cx="178" cy="290" r="3.5" fill="#fca5a5" opacity=".5"/>
+  <circle cx="335" cy="240" r="3.5" fill="#fca5a5" opacity=".5"/>
+  <circle cx="340" cy="270" r="3" fill="#fca5a5" opacity=".4"/>
+  <circle cx="338" cy="300" r="4" fill="#fca5a5" opacity=".6"/>
+
+  <!-- Brand line at bottom of bag -->
+  <text x="256" y="406" text-anchor="middle" fill="#9ca3af" font-size="9" font-weight="500" font-family="sans-serif">GESTION PRO</text>
+</svg>

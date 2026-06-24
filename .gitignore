@@ -1,5 +1,6 @@
 node_modules/
 desktop/node_modules/
+desktop/_out/
 desktop/build/
 desktop/dist/
 .DS_Store
@@ -9,4 +10,3 @@ desktop/dist/
 *.JPG
 *.jpg
 *.PNG
-*.png
