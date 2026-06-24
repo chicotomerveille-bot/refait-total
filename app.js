@@ -1,10 +1,7 @@
 
 // ─── STATE ───
 const K = 'chips_pro';
-const SB_URL = 'https://nsbkjtosovogetwwrnji.supabase.co';
-const SB_KEY = 'sb_publishable_LpIvf0N_7rj75hgJrlGJnQ_dIeCGKlm';
-let SB = null;
-try { SB = supabase.createClient(SB_URL, SB_KEY); } catch(e) {}
+const API = '/api/state';
 let D = { _schemaVer:10, clients:[], commandes:[], productions:[], montants:[], depenses:[], stockE:[], stockS:[], stockInit:[], employes:[], retraits:[], trash:[] };
 let nextId = 1;
 let currentPage = 'dash';
@@ -205,13 +202,19 @@ function updateSyncUI() {
   if(syncStatus==='error'){el.innerHTML='<span style="color:var(--red)">⚠ Échec synchro</span>';return;}
   el.innerHTML='<span style="color:var(--green)">✓ Synchronisé</span>';
 }
-function saveSB() {
+async function saveSB() {
   syncStatus='saving';updateSyncUI();
-  if(!SB){syncStatus='error';updateSyncUI();return Promise.resolve();}
-  return SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then(()=>{syncStatus='ok';updateSyncUI();}).catch(()=>{
-    // Retry once
-    return SB.from('app_state').upsert({id:1,data:D,updated_at:new Date().toISOString()},{onConflict:'id'}).then(()=>{syncStatus='ok';updateSyncUI();}).catch(()=>{syncStatus='error';updateSyncUI();});
-  });
+  try {
+    const r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(D) });
+    if(!r.ok) throw new Error(r.statusText);
+    syncStatus='ok';updateSyncUI();
+  } catch(_) {
+    try {
+      const r = await fetch(API, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(D) });
+      if(!r.ok) throw new Error(r.statusText);
+      syncStatus='ok';updateSyncUI();
+    } catch(_) { syncStatus='error';updateSyncUI(); }
+  }
 }
 
 // ─── ERROR HANDLER ───
@@ -298,11 +301,12 @@ function load() {
   } catch(_) {}
 }
 async function loadSB() {
-  if(!SB)return load();
   try {
-    const {data,error} = await SB.from('app_state').select('data').eq('id',1).single();
-    if(error||!data||!data.data||!Object.keys(data.data).length){load();return;}
-    D = data.data;
+    const r = await fetch(API);
+    if(!r.ok) throw new Error(r.statusText);
+    const data = await r.json();
+    if(!data||!data.clients) throw new Error('empty');
+    D = data;
     migrateSchema();
     if(!D.clients) Object.assign(D,{clients:[],commandes:[],productions:[],montants:[],depenses:[],stockE:[],stockS:[],employes:[],retraits:[],trash:[]});
     const all = [].concat(...['clients','commandes','productions','montants','depenses','stockE','stockS','employes','retraits','trash'].map(k=>D[k]||[]));
@@ -345,7 +349,7 @@ function prodEmps(p){return p.employes||(p.employe?[p.employe]:['Employé']);}
 // ─── NAV ───
 function nav(p) {
   currentPage = p;
-  document.querySelectorAll('.tabs a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
+  document.querySelectorAll('#sideNav a, .tabs a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
   document.querySelectorAll('.page').forEach(el => el.classList.toggle('active',el.id==='p-'+p));
   document.querySelectorAll('.mobile-nav a').forEach(a => a.classList.toggle('active',a.dataset.p===p));
   const labels={'dash':'📊 Tableau de Bord','clients':'👥 Clients','commandes':'🛒 Commandes','prod':'🏭 Production','montants':'💰 Montants','depenses':'💸 Dépenses','stock':'📦 Stock','finances':'📈 Finances','analyses':'🧠 Analyses','employes':'👷 Employés','exporter':'📥 Exporter','corbeille':'🗑️ Corbeille'};

@@ -1,8 +1,14 @@
 node_modules/
+api/node_modules/
 desktop/node_modules/
 desktop/_out/
 desktop/build/
+desktop/build-*/
+desktop/app-build/
+desktop/build-out/
 desktop/dist/
+desktop/*.exe
+desktop/*.blockmap
 .DS_Store
 *.MP3
 *.mp3
