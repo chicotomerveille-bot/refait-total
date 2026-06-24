@@ -2,29 +2,45 @@
   "name": "chips-gestion-pro",
   "version": "1.0.0",
   "description": "Application de gestion professionnelle pour production de chips",
+  "author": "Chips Gestion Pro",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder --win portable"
+    "dist": "electron-builder --win portable",
+    "installer": "electron-builder --win nsis"
   },
   "build": {
     "appId": "com.chips.gestion-pro",
     "productName": "Chips Gestion Pro",
-    "directories": { "output": "dist" },
+    "directories": { "output": "build" },
     "files": [
       "main.js",
-      "../index.html",
-      "../style.css",
-      "../app.js"
+      "..\\index.html",
+      "..\\style.css",
+      "..\\app.js"
+    ],
+    "extraResources": [
+      { "from": "..", "to": ".", "filter": ["index.html", "style.css", "app.js"] }
     ],
     "win": {
-      "target": ["portable"],
-      "icon": null
+      "target": ["nsis"],
+      "icon": null,
+      "legalTrademarks": "Chips Gestion Pro"
     },
-    "extraResources": [
-      { "from": "../", "to": "../", "filter": ["index.html", "style.css", "app.js"] }
-    ]
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Chips Gestion Pro",
+      "installerIcon": null,
+      "uninstallerIcon": null,
+      "installerHeaderIcon": null,
+      "menuCategory": true,
+      "displayLanguageSelector": false
+    }
   },
   "devDependencies": {
     "electron": "^35.0.0",

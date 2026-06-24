@@ -1,4 +1,7 @@
 node_modules/
+desktop/node_modules/
+desktop/build/
+desktop/dist/
 .DS_Store
 *.MP3
 *.mp3
