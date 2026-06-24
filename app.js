@@ -359,6 +359,7 @@ function nav(p) {
 function toggleNav() { const mn=document.getElementById('mobileNav'); mn.classList.toggle('o'); }
 function closeNav() { document.getElementById('mobileNav').classList.remove('o'); }
 document.addEventListener('click',function(e){const mn=document.getElementById('mobileNav');if(mn.classList.contains('o')&&!e.target.closest('#hamburger')&&!e.target.closest('#mobileNav'))closeNav();});
+function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
 
 function renderTabs() {
   const items = [
@@ -367,10 +368,12 @@ function renderTabs() {
     ['stock','📦','Stock'],['finances','📈','Finances'],['analyses','🧠','Analyses'],
     ['employes','👷','Employés'],['exporter','📥','Exporter'],['corbeille','🗑️','Corbeille']
   ];
-  document.getElementById('tabs').innerHTML = items.map(([id,ico,label]) =>
+  const side=document.getElementById('sideNav');
+  if(side) side.innerHTML = items.map(([id,ico,label]) =>
     `<a data-p="${id}" class="${id===currentPage?'active':''}" onclick="nav('${id}');render()">${ico} ${label}</a>`
   ).join('');
-  document.getElementById('mobileNav').innerHTML = items.map(([id,ico,label]) =>
+  const mn=document.getElementById('mobileNav');
+  if(mn) mn.innerHTML = items.map(([id,ico,label]) =>
     `<a data-p="${id}" class="${id===currentPage?'active':''}" onclick="nav('${id}');render()">${ico} ${label}</a>`
   ).join('');
 }

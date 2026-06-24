@@ -15,43 +15,50 @@
 </head>
 <body>
 
-<div class="tabs" id="tabs"></div>
-<div class="nav-wrap">
-<div class="filter-bar" id="filterBar">
-  <span class="page-title-mob" id="pageTitleMob">📊 Tableau de Bord</span>
-  <select id="fPreset" onchange="setFilter(this.value)">
-    <option value="all">🗓️ Toute période</option>
-    <option value="today">📅 Aujourd'hui</option>
-    <option value="week">📆 Cette semaine</option>
-    <option value="month">📅 Ce mois</option>
-    <option value="year">📅 Cette année</option>
-    <option value="custom">✏️ Personnalisée</option>
-  </select>
-  <input type="date" id="fStart" onchange="setFilter('custom')" />
-  <input type="date" id="fEnd" onchange="setFilter('custom')" />
-  <span class="filter-info" id="filterInfo"></span>
-  <span class="sp"></span>
-  <span class="user-info" id="userInfo"><button class="btn btn-sm btn-p" onclick="setUserName()">👤 Connexion</button></span>
-  <span id="syncStatus" style="font-size:10px;white-space:nowrap"></span>
-  <span class="sp2"></span>
-  <button class="hamburger" id="hamburger" onclick="toggleNav()" aria-label="Menu">☰</button>
-  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">🌙 Sombre</button>
+<div class="app-layout">
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-brand" onclick="toggleSidebar()">🍟 Chips Pro</div>
+    <div class="sidebar-nav" id="sideNav"></div>
+    <div class="sidebar-footer">
+      <span id="syncStatus" style="font-size:10px"></span>
+    </div>
+  </div>
+  <div class="main-area">
+    <div class="top-bar" id="filterBar">
+      <span class="page-title-mob" id="pageTitleMob">📊 Tableau de Bord</span>
+      <select id="fPreset" onchange="setFilter(this.value)">
+        <option value="all">🗓️ Toute période</option>
+        <option value="today">📅 Aujourd'hui</option>
+        <option value="week">📆 Cette semaine</option>
+        <option value="month">📅 Ce mois</option>
+        <option value="year">📅 Cette année</option>
+        <option value="custom">✏️ Personnalisée</option>
+      </select>
+      <input type="date" id="fStart" onchange="setFilter('custom')" />
+      <input type="date" id="fEnd" onchange="setFilter('custom')" />
+      <span class="filter-info" id="filterInfo"></span>
+      <span class="spacer"></span>
+      <span class="user-info" id="userInfo"><button class="btn btn-sm btn-p" onclick="setUserName()">👤 Connexion</button></span>
+      <button class="theme-btn" id="themeBtn" onclick="toggleTheme()">🌙</button>
+      <button class="hamburger" id="hamburger" onclick="toggleNav()" aria-label="Menu">☰</button>
+    </div>
+    <div class="mobile-nav" id="mobileNav"></div>
+    <div class="scroll-area">
+      <div class="page active" id="p-dash"></div>
+      <div class="page" id="p-clients"></div>
+      <div class="page" id="p-commandes"></div>
+      <div class="page" id="p-prod"></div>
+      <div class="page" id="p-montants"></div>
+      <div class="page" id="p-depenses"></div>
+      <div class="page" id="p-stock"></div>
+      <div class="page" id="p-finances"></div>
+      <div class="page" id="p-analyses"></div>
+      <div class="page" id="p-employes"></div>
+      <div class="page" id="p-exporter"></div>
+      <div class="page" id="p-corbeille"></div>
+    </div>
+  </div>
 </div>
-<div class="mobile-nav" id="mobileNav"></div>
-</div>
-
-<div class="page active" id="p-dash"></div>
-<div class="page" id="p-clients"></div>
-<div class="page" id="p-commandes"></div>
-<div class="page" id="p-prod"></div>
-<div class="page" id="p-montants"></div>
-<div class="page" id="p-depenses"></div>
-<div class="page" id="p-stock"></div>
-<div class="page" id="p-finances"></div>
-<div class="page" id="p-analyses"></div>
-<div class="page" id="p-employes"></div>
-<div class="page" id="p-exporter"></div>
-<div class="page" id="p-corbeille"></div>
 
 <div class="m-overlay" id="modal"><div class="m-body" id="modalBody"></div></div>
 
