@@ -2,6 +2,7 @@ node_modules/
 api/node_modules/
 desktop/node_modules/
 desktop/_out/
+desktop/_out_*/
 desktop/build/
 desktop/build-*/
 desktop/app-build/
@@ -9,6 +10,7 @@ desktop/build-out/
 desktop/dist/
 desktop/*.exe
 desktop/*.blockmap
+*.pdf
 .DS_Store
 *.MP3
 *.mp3
@@ -16,3 +18,5 @@ desktop/*.blockmap
 *.JPG
 *.jpg
 *.PNG
+
+.vercel

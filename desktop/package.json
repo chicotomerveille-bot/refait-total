@@ -8,23 +8,23 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win portable",
-    "installer": "electron-builder --win nsis"
+    "installer": "electron-builder --win nsis",
+    "release": "electron-builder --win nsis --publish always"
   },
   "build": {
     "appId": "com.chips.gestion-pro",
     "productName": "Chips Gestion Pro",
-    "directories": { "output": "_out" },
+    "directories": {
+      "output": "_out"
+    },
     "files": [
       "main.js",
-      "..\\index.html",
-      "..\\style.css",
-      "..\\app.js"
-    ],
-    "extraResources": [
-      { "from": "..", "to": ".", "filter": ["index.html", "style.css", "app.js"] }
+      "node_modules/**/*"
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "../icon.ico",
       "legalTrademarks": "Chips Gestion Pro"
     },
@@ -37,10 +37,19 @@
       "shortcutName": "Chips Gestion Pro",
       "menuCategory": true,
       "displayLanguageSelector": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "chicotomerveille-bot",
+      "repo": "refait-total",
+      "releaseType": "release"
     }
   },
   "devDependencies": {
     "electron": "^35.0.0",
     "electron-builder": "^25.0.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

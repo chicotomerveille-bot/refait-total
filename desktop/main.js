@@ -1,7 +1,9 @@
-const { app, BrowserWindow, globalShortcut } = require('electron');
-const path = require('path');
-
+const { app, BrowserWindow, globalShortcut, dialog } = require('electron');
+const { autoUpdater } = require('electron-updater');
 let win;
+
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
 
 function createWindow() {
   win = new BrowserWindow({
@@ -17,7 +19,7 @@ function createWindow() {
     }
   });
 
-  win.loadFile(path.join(__dirname, '..', 'index.html'));
+  win.loadURL('https://refait-total.vercel.app');
 
   win.on('closed', () => { win = null; });
   win.on('page-title-updated', (e) => e.preventDefault());
@@ -25,6 +27,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
+  autoUpdater.checkForUpdates();
   globalShortcut.register('CommandOrControl+R', () => {
     if (win) win.webContents.reload();
   });
@@ -39,4 +42,25 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
+});
+
+autoUpdater.on('update-available', (info) => {
+  if (win) {
+    win.webContents.executeJavaScript(`
+      if (confirm('Une mise à jour est disponible (v${info.version}). Télécharger maintenant ?')) true;
+      else false;
+    `).then((download) => {
+      if (download) autoUpdater.downloadUpdate();
+    });
+  }
+});
+
+autoUpdater.on('update-downloaded', () => {
+  if (win) {
+    win.webContents.executeJavaScript(`
+      confirm('Mise à jour téléchargée. Redémarrer pour installer ?');
+    `).then((restart) => {
+      if (restart) autoUpdater.quitAndInstall(false, true);
+    });
+  }
 });
